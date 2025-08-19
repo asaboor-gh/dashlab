@@ -2,6 +2,6 @@
 Dashlab - A Python package for dashboard and data visualization tools.
 """
 
-from .__version__ import __version__
+__version__ = "0.1.3" # This line is automatically updated at build time, do not edit manually.
 
 __all__ = ["__version__"]
