@@ -28,7 +28,7 @@ $pyprojectPath = "pyproject.toml"
 $currentVersion = (Get-Content $pyprojectPath | Select-String 'version = "(.+)"').Matches.Groups[1].Value
 
 Write-Host "📦 Current version is $currentVersion"
-Write-Host "➡️  Enter new version (e.g. 0.1.2):"
+Write-Host "➡️  Enter new version as major.minor.patch:"
 $newVersion = Read-Host
 
 # Update version in files
@@ -57,5 +57,14 @@ twine check dist/*
 Write-Host "🚀 Uploading to PyPI..."
 twine upload dist/*
 
-Write-Host "✅ DashLab $newVersion published. Press any key to exit..."
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "✅ DashLab $newVersion published successfully!" -ForegroundColor Green
+    Write-Host "📦 Committing and pushing to GitHub..."
+    git add .
+    git commit -m "Release DashLab $newVersion"
+    git push
+    Write-Host "🌐 GitHub updated with release $newVersion." -ForegroundColor Green
+
+} else {
+    Write-Host "❌ Upload failed. Please check the error above." -ForegroundColor Red
+}
