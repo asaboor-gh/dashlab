@@ -110,10 +110,11 @@ class AnimationSlider(AnyWidget, ValueWidget):
 
     ```python
     from plotly.graph_objects import FigureWidget
+    from dashlab.widgets import AnimationSlider
 
     fig = FigureWidget()
     fig.add_scatter(y=[1, 2, 3, 4, 5])
-    widget = slides.AnimationSlider() # assuming slides is the instance of Slides app
+    widget = AnimationSlider() 
 
     def on_change(change):
         value = change['new']
