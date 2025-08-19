@@ -5,8 +5,10 @@ from pathlib import Path
 from ipywidgets import ValueWidget
 from anywidget import AnyWidget
 
+from html import escape
 from . import utils
 
+__all__ = ['FullscreenButton', 'ListWidget', 'AnimationSlider', 'JupyTimer']
 
 class FullscreenButton(AnyWidget):
     """A button widget that toggles fullscreen mode for its parent element.
@@ -37,7 +39,7 @@ class ListWidget(AnyWidget,ValueWidget):
     """
     _options    = traitlets.List(read_only=True).tag(sync=True) # will by [(index, obj),...]
     description = traitlets.Unicode('Select an option', allow_none=True).tag(sync=True)
-    transform   = traitlets.Callable(repr, allow_none=True,help="transform(value) -> str")
+    transform   = traitlets.Callable(lambda obj: escape(repr(obj)), allow_none=True,help="transform(value) -> str")
     index       = traitlets.Int(None, allow_none=True).tag(sync=True)
     options     = traitlets.List() # only on backend
     value       = traitlets.Any(None, allow_none=True,read_only=True) # only backend
