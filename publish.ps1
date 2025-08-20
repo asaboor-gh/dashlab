@@ -94,7 +94,7 @@ if ($uploadSucceeded) {
         git commit -m "$commitMsg"
 
         # Optional tag
-        $tagAnswer = Read-Host "Tag release v$newVersion ? (y/N, Enter to skip)"
+        $tagAnswer = Read-Host "Tag release v$newVersion ? (y/N, press ↲ to skip)"
         if ($tagAnswer -match '^(?i)y(?:es)?$') {
             git tag "v$newVersion"
             git push origin "v$newVersion"
