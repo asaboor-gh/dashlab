@@ -1,4 +1,6 @@
 
+$versionFile = "dashlab/_version.py"
+
 function Update-Version {
     param (
         [string]$newVersion
@@ -6,26 +8,24 @@ function Update-Version {
 
     Write-Host "🔧 Updating version to $newVersion..."
 
-    # Update __init__.py
-    $initPath = "dashlab\__init__.py"
-    if (Test-Path $initPath) {
-        (Get-Content $initPath) |
+    
+    if (Test-Path $versionFile) {
+        (Get-Content $versionFile) |
             ForEach-Object { $_ -replace '__version__ = ".*"', "__version__ = `"$newVersion`"" } |
-            Set-Content $initPath
+            Set-Content $versionFile
     } else {
-        Set-Content $initPath "__version__ = `"$newVersion`""
+        Set-Content $versionFile "__version__ = `"$newVersion`""
     }
 
-    # Update pyproject.toml
-    $pyprojectPath = "pyproject.toml"
-    (Get-Content $pyprojectPath) |
-        ForEach-Object { $_ -replace 'version = ".*"', "version = `"$newVersion`"" } |
-        Set-Content $pyprojectPath
+    # # Update pyproject.toml
+    # $pyprojectPath = "pyproject.toml"
+    # (Get-Content $pyprojectPath) |
+    #     ForEach-Object { $_ -replace 'version = ".*"', "version = `"$newVersion`"" } |
+    #     Set-Content $pyprojectPath
 }
 
-# Detect current version from pyproject.toml
-$pyprojectPath = "pyproject.toml"
-$currentVersion = (Get-Content $pyprojectPath | Select-String 'version = "(.+)"').Matches.Groups[1].Value
+# Detect current version
+$currentVersion = (Get-Content $versionFile | Select-String '__version__ = "(.+)"').Matches.Groups[1].Value
 
 Write-Host "📦 Current version is $currentVersion"
 Write-Host "➡️  Enter new version as major.minor.patch:"
