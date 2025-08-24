@@ -83,7 +83,13 @@ def interactive(*funcs:list[callable], auto_update:bool=True, post_init: callabl
         def _registered_callbacks(self): return funcs # funcs can be provided by @callback decorated methods or optionally ovveriding it
         def __dir__(self): # avoid clutter of traits for end user on instance
             return ['set_css','set_layout','groups','outputs','params','isfullscreen','changed', 'layout', *_useful_traits] 
-    return Interactive(auto_update=auto_update, post_init=post_init)
+    out = Interactive(auto_update=auto_update)
+    if callable(post_init):
+        if len(post_init.__code__.co_varnames) != 1:
+            raise TypeError("post_init should be a callable which accepts instance of interact as argument!")
+        post_init(out) # call it with self, so it can access all methods and attributes
+    return out
+
     
 @_format_docs(other=interactive.__doc__)
 def interact(*funcs:list[callable], auto_update:bool=True, post_init: callable=None, **kwargs) -> None:
@@ -188,7 +194,7 @@ class Dashboard(DashboardBase):
             if not callable(output):
                 wrapped = wrapped(func)
             self._iapp_callbacks[wrapped.__name__] = wrapped
-            self._reset()
+            self._handle_callbacks() # re-handle callbacks to include new one
             return wrapped
         
         if callable(output):

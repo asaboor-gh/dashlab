@@ -211,7 +211,6 @@ class var(ValueWidget):
             raise TypeError(f"The 'value' trait of 'var' instance expected {self._type}, not {type(value)}.")
         return value
 
-
 _general_css = {
     'display': 'grid',
     'grid-gap': '4px',
@@ -236,11 +235,9 @@ _general_css = {
     },
     '.Context-Disabled:after': { 
         "content": "''", # should not trigger by minimal interactions
-        'background': 'hsl(from var(--bg2-color, whitesmoke) 230 50% l)',
-        'padding': '0 0.5em',
-        'padding-top': '4px', # button offset sucks
+        "color": "var(--accent-color, skyblue)",
         'animation': 'dotsFade 0.8s steps(4, end) infinite',
-        'position': 'absolute', 'right': '0', 'top': '50%','transform': 'translateY(-50%)',
+        'position': 'absolute', 'left': '50%', 'top': '0','transform': 'translateX(-50%)',
     },
     "^.Context-Loading:before": {
         "content": "''", # should not trigger by minimal interactions

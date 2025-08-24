@@ -123,7 +123,7 @@ _useful_traits =  [
     'grid_gap', 'justify_content','align_items'
 ]
 # for validation
-_pmethods = ['set_css','set_layout','update','_reset']
+_pmethods = ['set_css','set_layout','update','_handle_callbacks']
 _pattrs = ['groups','outputs','params', 'changed','isfullscreen']
 _omethods = ["_interactive_params"]
 
@@ -254,9 +254,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
     **Parameters**:      
 
     - auto_update (bool): Update outputs automatically on widget changes
-    - post_init: Optional function to run after all widgets are created as lambda self: (self.set_css(), self.set_layout(),...). 
-      You can annotate the type in function argument with `DashboardBase` to enable IDE hints and auto-completion e.g. `def post_init(self:DashboardBase): ...`
-    
+   
     **Widget Parameters** (`_interactive_params`'s returned dict):
     {widgets}
     **Callbacks**:   
@@ -283,7 +281,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
     changed = traitlets.Instance(Changed, default_value=Changed(), read_only=True) # tracks parameters values changed, but fixed itself
     params = traitlets.Instance(tuple, default_value=namedtuple('InteractiveParams', [])(), read_only=True) # hold parameters object forms, not just values
 
-    def __init__(self, auto_update:bool=True, post_init:callable=None) -> None:
+    def __init__(self, auto_update:bool=True) -> None:
         self.__css_class = 'i-'+str(id(self))
         self.__style_html = ipw.HTML()
         self.__style_html.layout.position = 'absolute' # avoid being grid part
@@ -291,6 +289,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         self.__app.layout.display = 'grid' # for correct export to html, other props in set_css
         self.__app.layout.position = 'relative' # contain absolute items inside
         self.__app._size_to_css = _size_to_css # enables em, rem
+        self.__app._user_layout = {} # store user layout for dynamic updates
         self.__other = ipw.VBox().add_class('other-area') # this should be empty to enable CSS perfectly, unless filled below
         self.update = self.__update # needs avoid checking in metaclass, but restric in subclasses, need before setup
         self.__setup(auto_update)
@@ -299,24 +298,14 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         for name in _useful_traits:
             traitlets.link((self, name),(self.__app,name))
         
-        if callable(post_init):
-            if len(post_init.__code__.co_varnames) != 1:
-                raise TypeError("post_init should be a callable which accepts instance of interact as argument!")
-            post_init(self) # call it with self, so it can access all methods and attributes
-
     def __setup(self, auto_update):
         self.__auto_update = auto_update
-        self._outputs = ()
+        self.__icallbacks = () # no callbacks yet, but need to define for binding in __init__
         self.__iparams = {} # just empty reference
         extras = self.__fix_kwargs() # params are internally fixed
         if not self.__iparams: # need to interact anyhow and also allows a no params function
             self.__auto_update = False
         
-        self.__icallbacks = self._registered_callbacks() # callbacks after collecting params
-        if not isinstance(self.__icallbacks, (list, tuple)):
-            raise TypeError("_registered_callbacks should return a tuple of functions!")
-        
-        outputs = self.__func2widgets() # build stuff, before actual interact
         super().__init__(self.__run_updates, {'manual':not self.__auto_update,'manual_name':''}, **self.__iparams)
         self.unobserve_all("params") # even setting a fixed can trigger callbacks, so remove all
         
@@ -341,7 +330,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         self.layout.position = 'relative' # contain absolute items inside
         self.layout.height = 'max-content' # adopt to inner height
 
-        self.children += (*extras, *outputs, self.__style_html) # add extra widgets to box children
+        self.children += (*extras, self.__style_html) # add extra widgets to box children
         self.out.add_class("out-main")
         self.out._kwarg = "out-main" # needs to be in all widgets
 
@@ -361,45 +350,46 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             for w in self.kwargs_widgets: # should tell the button to update
                 # ipywidgets' Play, Text and added Animation Sliders bypass run button, no need to trigger it
                 if not isinstance(w, (ipw.Text, ipw.Play, AnimationSlider)): 
-                    w.observe(lambda change: _hint_update(btn),names=['value'])
+                    w.observe(lambda change, btn=btn: _hint_update(btn),names=['value'])
             
             btn._kwarg = 'btn-main'
             btn.add_class('Refresh-Btn').add_class('btn-main') # btn-main for user
             btn.layout = {'width': 'max-content', 'height':'28px', 'padding':'0 24px'}
             btn.tooltip = 'Sync Outputs'
             btn.icon = 'refresh'
-            try:
-                btn.click() # first run to ensure no dynamic inside
-            except Exception as e:
-                print(f"Warning: Initial button click faild: {e}")
-
-        self.__all_widgets = self.__order_widgets(btn) # save it once for sending to app layout
-        self._groups = self.__create_groups(self.__all_widgets) # create groups of widgets for later use
-        
-        for func in self.__icallbacks:
-            self.__hint_btns_update(func) # external buttons update hint
             
-        # add all to GridBox which is single column as default
-        self.set_layout(center=list(self.__all_widgets.keys())) 
+        self._handle_callbacks() # collects callbacks and run updates
+        self.set_layout(center=list(self.__all_widgets.keys())) # default layout, needs all widgets first time
     
-    def __order_widgets(self, manual_btn=None):
-        _kw_map = {w._kwarg: w for w in self.children if hasattr(w, '_kwarg')}
-        # 1) params in declared order
-        ordered = {name:_kw_map[name] for name in self.__iparams.keys() if name in _kw_map}
-        # 2) Manual button (if any) comes after params
-        if manual_btn:
+    def __order_widgets(self, outputs):
+        kw_map = {w._kwarg: w for w in self.params if hasattr(w, '_kwarg') and isinstance(w, DOMWidget)}
+        # 1) controls in declared order
+        ordered = {name:value for name, value in kw_map.items() if isinstance(value, ipw.ValueWidget)}
+        # 2) Manual button (if any) comes after controls
+        if manual_btn := getattr(self, 'manual_button', None):
             ordered['btn-main'] = manual_btn
-        # 3) outputs in registration order
-        ordered.update({out._kwarg: out for out in self._outputs if hasattr(out, '_kwarg')})
+        # 3) outputs in registration order and shoould have _kwarg internally
+        ordered.update({out._kwarg: out for out in outputs})
         # 4) main output
         ordered["out-main"] = self.out
         # 5) anything else with _kwarg not yet included
-        ordered.update({name: w for name, w in _kw_map.items() if name not in ordered})
+        ordered.update({name: w for name, w in kw_map.items() if name not in ordered})
         return ordered 
     
-    def _reset(self):
-        "Method not to be ovverridden, needed to add callbacks and widgets dynamically."
-        self.__setup(self.__auto_update) # setup again to update widgets and callbacks on same instance
+    def _handle_callbacks(self):
+        self.__icallbacks = self._registered_callbacks() # callbacks after collecting params
+        if not isinstance(self.__icallbacks, (list, tuple)):
+            raise TypeError("_registered_callbacks should return a tuple of functions!")
+        
+        outputs = self.__func2widgets() # build stuff, before actual interact
+        self.__all_widgets = self.__order_widgets(outputs) # save it once for sending to app layout set afterwards
+        self._groups = self.__create_groups(self.__all_widgets) # create groups of widgets
+        
+        for func in self.__icallbacks:
+            self.__hint_btns_update(func) # external buttons update hint
+        
+        self.set_layout(**self.__app._user_layout) # this will reset new and old outputs in layout
+        self.update() # crucial: run all callbacks once to update outputs, only changed params will trigger callbacks, or new added ones
     
     def __repr__(self): # it throws very big repr, so just show class name and id
         return f"<{self.__module__}.{type(self).__name__} at {hex(id(self))}>"
@@ -528,11 +518,11 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         """
         layout = {key:value for key,value in locals().items() if key != 'self'}
         self.__validate_layout(layout)
+        self.__app._user_layout = layout # store for dynamic updates if callbacks change widgets
         self.__other.children = () # reset other area, it will be filled later
         areas = ["header","footer", "center", "left_sidebar","right_sidebar"]
         for key in areas:
             self.__app.set_trait(key, None) # reset all areas first
-        
 
         collected = []
         for key, value in layout.items():
@@ -740,7 +730,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                 value.description = key # only if not given
     
     def __func2widgets(self):
-        self._outputs = ()   # reference for later use
+        outputs = []  # collecting output widgets from callbacks
         callbacks = [] # collecting processed callback
         used_classes = {}  # track used CSS classes for conflicts 
         seen_funcs = set() # track for any duplicate function
@@ -769,11 +759,11 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             callbacks.append(new_func) 
             
             if out is not None:
-                self._outputs += (out,)
+                outputs.append(out)
         
         self.__icallbacks = tuple(callbacks) # set back
         del used_classes, seen_funcs, callbacks # no longer needed
-        return self._outputs # explicit
+        return tuple(outputs)
     
     def __validate_func(self, f):
         ps = inspect.signature(f).parameters
@@ -822,11 +812,16 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         
         for btn in btns:
             for k,w in ctrls.items():
+                if hasattr(w, '_hinting_btn_update'):
+                    w.unobserve(w._hinting_btn_update, names='value') # remove old if any
+                
                 def update_hint(change, button=btn): _hint_update(button) # closure
                 w.observe(update_hint, names='value') # update button hint on value change
+                w._hinting_btn_update = update_hint # keep reference to clean up before adding next time
                
     @property
-    def outputs(self) -> tuple: return self._outputs
+    def outputs(self) -> tuple: 
+        return tuple([w for _, w in self.__all_widgets.items() if isinstance(w, ipw.Output)])
 
     @property
     def groups(self) -> namedtuple: 
