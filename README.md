@@ -11,7 +11,7 @@ An enhanced dashboarding library based on ipywidgets' interaction functionality 
 
 ## Installation
 
-You can install einteract using pip:
+You can install dashlab using pip:
 
 ```bash
 pip install dashlab

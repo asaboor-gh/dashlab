@@ -1,0 +1,6 @@
+# For Binder
+numpy
+pandas
+matplotlib
+anywidget
+markdown

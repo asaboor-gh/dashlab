@@ -180,7 +180,7 @@ class var(ValueWidget):
     
     ```python
     import pandas as pd
-    from einteract import var, interactive
+    from dashlab import var, interactive
     df = pd.DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6]})
     itv = interactive(lambda x: print(x), x = var(df, match=lambda a, b: a.equals(b))) # or match = pd.DataFrame.equals
     itv # display itv to see the widget
@@ -269,5 +269,5 @@ _general_css = {
         'height':'auto',
         'box-sizing':'border-box !important',
         '> *': {'box-sizing':'border-box !important',}
-    }, # as einteract now support vtack, this is good here
+    }, # as dashlab supports vtack, this is good here
 }
