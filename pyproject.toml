@@ -24,7 +24,8 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Visualization"
 ]
 dependencies = [
-    "anywidget"
+    "anywidget",
+    "markdown"
 ]
 
 [project.optional-dependencies]

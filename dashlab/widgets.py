@@ -39,7 +39,7 @@ class ListWidget(AnyWidget,ValueWidget):
     """
     _options    = traitlets.List(read_only=True).tag(sync=True) # will by [(index, obj),...]
     description = traitlets.Unicode('Select an option', allow_none=True).tag(sync=True)
-    transform   = traitlets.Callable(lambda obj: escape(repr(obj)), allow_none=True,help="transform(value) -> str")
+    transform   = traitlets.Callable(None, allow_none=True,help="transform(value) -> str")
     index       = traitlets.Int(None, allow_none=True).tag(sync=True)
     options     = traitlets.List() # only on backend
     value       = traitlets.Any(None, allow_none=True,read_only=True) # only backend
@@ -49,6 +49,18 @@ class ListWidget(AnyWidget,ValueWidget):
     _css = Path(__file__).with_name('static') / 'listw.css'
     
     def __init__(self, *args, **kwargs):
+        if kwargs.get('transform', None) is None:
+            def default_transform(obj):
+                if isinstance(obj, str):
+                    return obj
+                if hasattr(obj, '_repr_svg_'):
+                    return getattr(obj, '_repr_svg_')()
+                elif hasattr(obj, '_repr_html_'):
+                    return getattr(obj, '_repr_html_')()
+                else:
+                    return escape(repr(obj)) # escap as most repr return str with <,>
+            kwargs['transform'] = default_transform
+            
         super().__init__(*args, **kwargs)
         self.layout.max_height = '400px' # default max height
     
