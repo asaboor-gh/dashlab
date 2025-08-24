@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from IPython.core.ultratb import AutoFormattedTB
 from ipywidgets import DOMWidget
 
+# These few functions are used in ipyslides, especially _build_css
+# So do not move around or make changes without checking ipyslides
 
 def _fix_trait_sig(cls):
     "Avoid showing extra kwargs by having a class attribute _no_kwargs"

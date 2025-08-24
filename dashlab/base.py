@@ -364,7 +364,11 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
     def __order_widgets(self, outputs):
         kw_map = {w._kwarg: w for w in self.params if hasattr(w, '_kwarg') and isinstance(w, DOMWidget)}
         # 1) controls in declared order
-        ordered = {name:value for name, value in kw_map.items() if isinstance(value, ipw.ValueWidget)}
+        ordered = {name:value 
+            for name, value in kw_map.items() 
+            if isinstance(value, ipw.ValueWidget) 
+            and not isinstance(value, (ipw.HTML, ipw.HTMLMath)) # HTML is not control usually
+        } #
         # 2) Manual button (if any) comes after controls
         if manual_btn := getattr(self, 'manual_button', None):
             ordered['btn-main'] = manual_btn
@@ -384,10 +388,6 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         outputs = self.__func2widgets() # build stuff, before actual interact
         self.__all_widgets = self.__order_widgets(outputs) # save it once for sending to app layout set afterwards
         self._groups = self.__create_groups(self.__all_widgets) # create groups of widgets
-        
-        for func in self.__icallbacks:
-            self.__hint_btns_update(func) # external buttons update hint
-        
         self.set_layout(**self.__app._user_layout) # this will reset new and old outputs in layout
         self.update() # crucial: run all callbacks once to update outputs, only changed params will trigger callbacks, or new added ones
     
@@ -672,12 +672,6 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
 
         # All params should be fixed above before doing below
         for key, value in params.copy().items(): 
-            # not for random dict, but intended one
-            if isinstance(value, dict) and len(value) == 1 and set(value).issubset(params):
-                print(f"use 'widget.trait' instead of {value}, which allows using '.trait' to observe traits on the instance")
-                value = '.'.join([*value.keys(), *value.values()]) # make a str for old way to work
-                print("converted to:", value)
-
             if isinstance(value, str) and value.count('.') == 1 and ' ' not in value: # space restricted
                 name, trait_name = value.split('.')
                 if name == '' and trait_name in self.trait_names() and not trait_name.startswith('_'): # avoid privates
@@ -755,6 +749,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                 used_classes[klass] = f.__name__
             
             self.__validate_func(f) # before making widget, check
+            self.__hint_btns_update(f) # external buttons update hint based on mutated params
             new_func, out = _func2widget(f, self.changed) # converts to output widget if user set class or empty
             callbacks.append(new_func) 
             
@@ -795,7 +790,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             if isinstance(widget, ipw.Output):
                 outputs.append(key)
             elif (isinstance(widget, ipw.ValueWidget) and 
-              not isinstance(widget, (ipw.HTML, ipw.Label, ipw.HTMLMath))):
+              not isinstance(widget, (ipw.HTML, ipw.HTMLMath))):
                 controls.append(key)
             elif key == 'btn-main' or isinstance(widget, ipw.Button):
                 controls.append(key) # run buttons always in controls
@@ -806,12 +801,12 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
     def __hint_btns_update(self, func):
         func_params = {k:v for k,v in inspect.signature(func).parameters.items()}
         # Let's observe buttons by shared value widgets in func_params
-        controls = {c: self.__all_widgets[c] for c in self.groups.controls if c in func_params} # filter controls by func_params
+        controls = {c:v for c,v in self.params._asdict().items() if c in func_params} # filter controls by func_params
         btns = [controls[k] for k in func_params if isinstance(controls.get(k,None), ipw.Button)]
-        ctrls = {k: v for k, v in controls.items() if isinstance(v, ipw.ValueWidget)} # other controls
+        ctrls = [v for v in controls.values() if isinstance(v, ipw.ValueWidget)] # other controls
         
         for btn in btns:
-            for k,w in ctrls.items():
+            for w in ctrls:
                 if hasattr(w, '_hinting_btn_update'):
                     w.unobserve(w._hinting_btn_update, names='value') # remove old if any
                 
