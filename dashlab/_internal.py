@@ -5,9 +5,10 @@ from datetime import datetime
 from functools import wraps
 from typing import Union, Callable
 
-from ipywidgets import DOMWidget, Output, fixed, ValueWidget
+from ipywidgets import DOMWidget, Output, fixed, ValueWidget, Button
 
 from .widgets import JupyTimer
+from .utils import _fix_init_sig
 
 _active_output = nullcontext() # will be overwritten by function calls
 _active_timer = JupyTimer() # will be displayed inside Interact
@@ -171,6 +172,7 @@ class _ValFunc:
         return not self.__eq__(other)
     
 
+@_fix_init_sig
 class var(ValueWidget):
     """An object wrapper to be used in interactive with custom comparison for change detection. Default: identity comparison (a is b).
     
@@ -210,6 +212,26 @@ class var(ValueWidget):
         if not isinstance(value, self._type):
             raise TypeError(f"The 'value' trait of 'var' instance expected {self._type}, not {type(value)}.")
         return value
+    
+@_fix_init_sig
+class button(Button):
+    """A button widget to be used as interactive parameter to run a callback on click irrespective of other changes.
+    It can be used in multiple callbacks and will trigger all of them on click.
+    A global manual button offered by `ipywidgets.interact` is not suitable to hold a multi-callback application.
+    
+    All parameters of `ipywidgets.Button` can be used here. `alert` is used as tooltip which is displayed when other
+    parameters are changed but button is not clicked yet. So it indicates user to click the button to update the GUI.
+    
+    Example:
+    ```python
+    from dashlab import interactive, button
+    itv = interactive(lambda x, btn: print(x), x = 5, btn = button(description="Run", alert="🔴"))
+    itv # display itv to see the button
+    ```
+    """
+    def __init__(self, description="Run Callback", icon="refresh", alert="update", **kwargs):
+        kwargs['tooltip'] = kwargs.get('tooltip', alert) # respect user given tooltip
+        super().__init__(description=description, icon=icon, **kwargs)
 
 _general_css = {
     'display': 'grid',
@@ -237,7 +259,7 @@ _general_css = {
         "content": "''", # should not trigger by minimal interactions
         "color": "var(--accent-color, skyblue)",
         'animation': 'dotsFade 0.8s steps(4, end) infinite',
-        'position': 'absolute', 'left': '50%', 'top': '0','transform': 'translateX(-50%)',
+        'position': 'absolute', 'left': '50%', 'bottom': '0','transform': 'translateX(-50%)',
     },
     "^.Context-Loading:before": {
         "content": "''", # should not trigger by minimal interactions

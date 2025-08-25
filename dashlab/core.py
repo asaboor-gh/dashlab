@@ -9,7 +9,7 @@ from .base import _docs, DashboardBase, callback
 from .utils import _format_docs, _fix_init_sig
 
 @_format_docs(**_docs)
-def interactive(*funcs:list[callable], auto_update:bool=True, post_init: callable=None, **kwargs):
+def interactive(*funcs:list[callable], post_init: callable=None, **kwargs):
     """Enhanced interactive widget with multiple callbacks, grid layout and fullscreen support.
 
     This function is used for quick dashboards. Subclass `DashboardBase` for complex applications.
@@ -57,7 +57,6 @@ def interactive(*funcs:list[callable], auto_update:bool=True, post_init: callabl
     **Parameters**:     
 
     - `*funcs`: One or more callback functions
-    - auto_update: Update automatically on widget changes
     - post_init: Optional function to run after all widgets are created as lambda self: (self.set_css(), self.set_layout(),...). 
       You can annotate the type in function argument with `DashboardBase` to enable IDE hints and auto-completion e.g. `def post_init(self:DashboardBase): ...`
     - `**kwargs`: Widget parameters
@@ -83,7 +82,7 @@ def interactive(*funcs:list[callable], auto_update:bool=True, post_init: callabl
         def _registered_callbacks(self): return funcs # funcs can be provided by @callback decorated methods or optionally ovveriding it
         def __dir__(self): # avoid clutter of traits for end user on instance
             return ['set_css','set_layout','groups','outputs','params','isfullscreen','changed', 'layout', *_useful_traits] 
-    out = Interactive(auto_update=auto_update)
+    out = Interactive()
     if callable(post_init):
         if len(post_init.__code__.co_varnames) != 1:
             raise TypeError("post_init should be a callable which accepts instance of interact as argument!")
@@ -92,7 +91,7 @@ def interactive(*funcs:list[callable], auto_update:bool=True, post_init: callabl
 
     
 @_format_docs(other=interactive.__doc__)
-def interact(*funcs:list[callable], auto_update:bool=True, post_init: callable=None, **kwargs) -> None:
+def interact(*funcs:list[callable], post_init: callable=None, **kwargs) -> None:
     """{other}
 
     **Tips**:    
@@ -101,7 +100,7 @@ def interact(*funcs:list[callable], auto_update:bool=True, post_init: callable=N
     - You can also use this under `Slides.capture_content` to display later in a specific place.
     """
     def inner(func):
-        return display(interactive(func, *funcs, auto_update = auto_update, post_init=post_init, **kwargs))
+        return display(interactive(func, *funcs, post_init=post_init, **kwargs))
     return inner
 
 
@@ -111,7 +110,6 @@ class Dashboard(DashboardBase):
     """A ready-to-use interactive dashboard application which allows registering callbacks after initialization.
     {features}
     **Parameters**:
-    - auto_update: bool, if True, updates widgets automatically on changes.
     - interactive_params: kwargs, parameters for interactive widgets, must be provided at initialization.
 
     **Widget Parameters** (`interactive_params` passed at initialization):
@@ -154,10 +152,10 @@ class Dashboard(DashboardBase):
     def __init_subclass__(cls, **kwargs):
         raise TypeError(f"{cls.mro()[1]} does not support subclassing. Subclass DashboardBase if you really need to do so.")
 
-    def __init__(self, auto_update=True, **interactive_params):
+    def __init__(self, **interactive_params):
         self._iapp_params = interactive_params
         self._iapp_callbacks = {} # ensures unique functions
-        super().__init__(auto_update=auto_update)
+        super().__init__()
     
     def __dir__(self): # avoid clutter of traits for end user on instance
         return ['callback', 'set_css','set_layout','groups','outputs','params','isfullscreen','changed', 'layout', *_useful_traits] 

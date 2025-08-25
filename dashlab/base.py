@@ -3,8 +3,6 @@ Enhanced version of ipywidgets's interact/interactive functionality.
 Use as interactive/@interact or subclass DashboardBase. 
 """
 
-__all__ = ['Dashboard','interactive','interact', 'var', 'monitor', 'patched_plotly','disabled','print_error'] # other need to be explicity imported
-
 import re, textwrap
 import inspect 
 import traitlets
@@ -17,8 +15,8 @@ from typing import List, Callable, Dict, Union, Tuple
 from ipywidgets import DOMWidget, Box # for clean type annotation
 
 from . import _internal # for side effects 
-from ._internal import AnyTrait, Changed, _ValFunc, var, monitor, _general_css
-from .widgets import FullscreenButton, AnimationSlider
+from ._internal import AnyTrait, Changed, _ValFunc, monitor, _general_css
+from .widgets import FullscreenButton
 from .patches import patched_plotly
 from .utils import print_error, disabled, _build_css, _fix_init_sig, _format_docs, _size_to_css
 
@@ -50,55 +48,43 @@ def _func2widget(func, change_tracker):
             out.clear_output(wait=True) # clear previous output
             _internal._active_output = out # to get it for debounce in monitor
 
-        with (out or nullcontext()):
-            filtered_kwargs = {k: v for k, v in kwargs.items() if k in func_params}
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k in func_params}
 
-            # Check if any parameter is a Button, and skip them
-            buttons = [v for v in filtered_kwargs.values() if isinstance(v, ipw.Button)]
-            
-            # Any parameter which is widget does not change identity even if underlying data changes.
-            # For example, Plotly's FigureWidget relies on underlying data for ==, which can make `new_fig != old_fig`
-            # evaluate to True even when `new_fig is old_fig`. This can trigger unnecessary function calls during active
-            # selections, which cannot be removed from the Python side (unfortunately). 
-            # Checking identity is a mess later together with == and in, we can just exclude them here, widget is supposed to have a static identity
-            other_params  = {k: v for k, v in filtered_kwargs.items() if not isinstance(v, ipw.DOMWidget)}
-            
-            # Unwrap _ValFunc instances to get the actual value
-            unwrapped_kws = {k: v.value if isinstance(v,_ValFunc) else v for k, v in filtered_kwargs.items()}
-            
-            if buttons:
-                if not any(btn.clicked for btn in buttons):
-                    return # Only update if a button was clicked and skip other parameter changes
-                
-                with print_error(), disabled(*buttons): # disable buttons during function call
-                    try: # error still be raised, but will be caught by print_error, so finally is important
-                        _running_callbacks.add(callback_id)  # Mark as running
-                        func(**unwrapped_kws) # Call the function with filtered parameters only if changed or no params
-                    finally:
-                        _running_callbacks.discard(callback_id)  # Always remove when done
-                        last_kws.update(filtered_kwargs) # update old kwargs to latest values
-                
-                return # exit after button click handling
-            
-            # Compare values properly by checking each parameter that is not a Widget (should already be same object)
-            # Not checking identity here to take benifit of mutations like list/dict content
-            values_changed = [k for k, v in other_params.items() 
-                if (k not in last_kws) or (v != last_kws[k]) 
-            ] # order of checks matters
-            
-            # Run function if new values, or does not have parameters or on button click
-            if values_changed or not func_params: # function may not have arguments but can be run via others
-                change_tracker._set(values_changed)
-                with print_error():
-                    try:
-                        _running_callbacks.add(callback_id)  # Mark as running
-                        func(**unwrapped_kws) # Call the function with filtered parameters only if changed or no params
-                    finally:
-                        _running_callbacks.discard(callback_id)  # Always remove when done
-            
-            change_tracker._set([])
+        # Check if any parameter is a Button, and skip them
+        buttons = [v for v in filtered_kwargs.values() if isinstance(v, ipw.Button)]
+        
+        # Any parameter which is widget does not change identity even if underlying data changes.
+        # For example, Plotly's FigureWidget relies on underlying data for ==, which can make `new_fig != old_fig`
+        # evaluate to True even when `new_fig is old_fig`. This can trigger unnecessary function calls during active
+        # selections, which cannot be removed from the Python side (unfortunately). 
+        # Checking identity is a mess later together with == and in, we can just exclude them here, widget is supposed to have a static identity
+        other_params  = {k: v for k, v in filtered_kwargs.items() if not isinstance(v, ipw.DOMWidget)}
+        
+        # Unwrap _ValFunc instances to get the actual value
+        unwrapped_kws = {k: v.value if isinstance(v,_ValFunc) else v for k, v in filtered_kwargs.items()}
+        
+        # Compare values properly by checking each parameter that is not a Widget (should already be same object)
+        # Not checking identity here to take benifit of mutations like list/dict content
+        values_changed = [k for k, v in other_params.items() 
+            if (k not in last_kws) or (v != last_kws[k]) 
+        ] # order of checks matters
+        
+        try:
+            change_tracker._set(values_changed)
+            _running_callbacks.add(callback_id)  # Mark as running
+            with (out or nullcontext()): # capture function output to given output widget if any or to main output
+                if buttons:
+                    if not any(btn.clicked for btn in buttons): return # first check if any button clicked
+                    with print_error(), disabled(*buttons): # disable buttons during function call
+                        func(**unwrapped_kws)
+                elif values_changed: # and only if values changed
+                    with print_error():
+                        func(**unwrapped_kws)
+        finally:
+            _running_callbacks.discard(callback_id) # Always remove when done
+            change_tracker._set([]) # reset if error happens before function call
             last_kws.update(filtered_kwargs) # update old kwargs to latest values
-            _internal._active_output = old_ctx
+            _internal._active_output = old_ctx # reset active output in any case
     
     return (call_func, out)
 
@@ -162,8 +148,9 @@ _docs = {
     - Any DOM widget that needs display (inside fixed too). A widget and its observed trait in a single function are not allowed, such as `f(fig, v)` where `v='fig.selected'`.
     - Wrap any object in `param = var(obj, match)` to use it as a parameter with custom equality check like `match(a, b) -> bool` for dataframes or other objects. Assigning `param.value = new_value` will update the widget and trigger callbacks
     - Plotly FigureWidgets (use patched_plotly)
-    - `ipywidgets.Button` for manual updates on heavy callbacks besides global `auto_update`. Add tooltip for info on button when not synced.
+    - `dashlab.button`/`ipywidgets.Button` for manual updates on heavy callbacks besides. Add tooltip for info on button when not synced.
         - You can have multiple buttons in a single callback and check `btn.clicked` attribute to run code based on which button was clicked.
+        - The manual button offered by ipywidgets.interactive is not suitable to hold a GUI with multiple callbacks, so that functionality is replaced by more flexible dashlab.button.
     - Plotly FigureWidgets (use patched_plotly for selection support)
     """,
     "callbacks": """
@@ -211,7 +198,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
     **Basic Usage**:    
 
     ```python
-    from dashlab import DashboardBase, callback
+    from dashlab import DashboardBase, callback, button
     import ipywidgets as ipw
     import plotly.graph_objects as go
 
@@ -221,7 +208,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                 'x': ipw.IntSlider(0, 0, 100),
                 'y': 'x.value',  # observe x's value
                 'fig': ipw.fixed(go.FigureWidget()),
-                'btn': ipw.Button(icon='refresh', tooltip='Update Plot'),
+                'btn': button(icon='refresh', alert='Update Plot'), # manual update button
             }}
             
         @callback # captured by out-main 
@@ -237,7 +224,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                 print(x)
     
     # Create and layout
-    dash = MyDashboard(auto_update=True)
+    dash = MyDashboard()
     dash.set_layout(
         left_sidebar=dash.groups.controls,  # controls on left
         center=[(ipw.VBox(), ('fig', ipw.HTML('Showing Stats'), 'out-stats')),]  # plot and stats in a VBox explicitly
@@ -251,10 +238,6 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
     }})
     ```
 
-    **Parameters**:      
-
-    - auto_update (bool): Update outputs automatically on widget changes
-   
     **Widget Parameters** (`_interactive_params`'s returned dict):
     {widgets}
     **Callbacks**:   
@@ -281,7 +264,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
     changed = traitlets.Instance(Changed, default_value=Changed(), read_only=True) # tracks parameters values changed, but fixed itself
     params = traitlets.Instance(tuple, default_value=namedtuple('InteractiveParams', [])(), read_only=True) # hold parameters object forms, not just values
 
-    def __init__(self, auto_update:bool=True) -> None:
+    def __init__(self) -> None:
         self.__css_class = 'i-'+str(id(self))
         self.__style_html = ipw.HTML()
         self.__style_html.layout.position = 'absolute' # avoid being grid part
@@ -292,21 +275,18 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         self.__app._user_layout = {} # store user layout for dynamic updates
         self.__other = ipw.VBox().add_class('other-area') # this should be empty to enable CSS perfectly, unless filled below
         self.update = self.__update # needs avoid checking in metaclass, but restric in subclasses, need before setup
-        self.__setup(auto_update)
+        self.__setup()
         
         # do not add traits in __init__, unknow errors arise, just link
         for name in _useful_traits:
             traitlets.link((self, name),(self.__app,name))
         
-    def __setup(self, auto_update):
-        self.__auto_update = auto_update
+    def __setup(self):
         self.__icallbacks = () # no callbacks yet, but need to define for binding in __init__
         self.__iparams = {} # just empty reference
         extras = self.__fix_kwargs() # params are internally fixed
-        if not self.__iparams: # need to interact anyhow and also allows a no params function
-            self.__auto_update = False
         
-        super().__init__(self.__run_updates, {'manual':not self.__auto_update,'manual_name':''}, **self.__iparams)
+        super().__init__(self.__run_updates, {'manual': False}, **self.__iparams) # each function can have their own manual button if needed, global does not make sense
         self.unobserve_all("params") # even setting a fixed can trigger callbacks, so remove all
         
         # Attach params as namedtuple trait for object instances
@@ -324,8 +304,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             if getattr(v, '_self_iparam_ws',False):
                 v.value = self.params # update to pick widgets in kwargs later
                 
-        # Fix manual button and other stuff
-        btn = getattr(self, 'manual_button', None) # need it above later
+        # Fix CSS classes and other stuff
         self.add_class('ips-interact').add_class(self.__css_class)
         self.layout.position = 'relative' # contain absolute items inside
         self.layout.height = 'max-content' # adopt to inner height
@@ -339,24 +318,6 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             if isinstance(w, ipw.fixed):
                 w = w.value
             getattr(w, 'add_class', lambda v: None)(c) # for grid area
-
-            # If requires click to run, animations still should work
-            if btn and isinstance(w, (ipw.Play, AnimationSlider)):
-                w.continuous_update = False
-                w.observe(self.update, names='value')
-
-        if btn:
-            btn.add_traits(clicked=traitlets.Bool(False, read_only=True)) # just completeness for global button too
-            for w in self.kwargs_widgets: # should tell the button to update
-                # ipywidgets' Play, Text and added Animation Sliders bypass run button, no need to trigger it
-                if not isinstance(w, (ipw.Text, ipw.Play, AnimationSlider)): 
-                    w.observe(lambda change, btn=btn: _hint_update(btn),names=['value'])
-            
-            btn._kwarg = 'btn-main'
-            btn.add_class('Refresh-Btn').add_class('btn-main') # btn-main for user
-            btn.layout = {'width': 'max-content', 'height':'28px', 'padding':'0 24px'}
-            btn.tooltip = 'Sync Outputs'
-            btn.icon = 'refresh'
             
         self._handle_callbacks() # collects callbacks and run updates
         self.set_layout(center=list(self.__all_widgets.keys())) # default layout, needs all widgets first time
@@ -369,14 +330,11 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             if isinstance(value, ipw.ValueWidget) 
             and not isinstance(value, (ipw.HTML, ipw.HTMLMath)) # HTML is not control usually
         } #
-        # 2) Manual button (if any) comes after controls
-        if manual_btn := getattr(self, 'manual_button', None):
-            ordered['btn-main'] = manual_btn
-        # 3) outputs in registration order and shoould have _kwarg internally
+        # 2) outputs in registration order and shoould have _kwarg internally
         ordered.update({out._kwarg: out for out in outputs})
-        # 4) main output
+        # 3) main output
         ordered["out-main"] = self.out
-        # 5) anything else with _kwarg not yet included
+        # 4) anything else with _kwarg not yet included
         ordered.update({name: w for name, w in kw_map.items() if name not in ordered})
         return ordered 
     
@@ -411,9 +369,6 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                     f"{key!r} in layout should be a list/tuple of widget names or "
                     f"(Box_instance, [names]) tuples, got {type(value).__name__}"
                 )
-            
-            if self.__auto_update:
-                value = [v for v in value if v != 'btn-main'] # avoid throwing error over button, which changes by other paramaters
             
             for i, name in enumerate(value,start=1):
                 if isinstance(name,str):
@@ -571,7 +526,6 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         **CSS Classes Available**:  
 
         - Parameter names from _interactive_params()
-        - 'btn-main' for manual update button
         - Custom 'out-*' classes from `@callback` decorators and 'out-main' from main output.
 
         **Example**:       
@@ -772,11 +726,8 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                 "Only explicitly named keywords from interactive params are allowed."
             )
 
-        if len(ps) == 0 and self.__auto_update:
-            raise ValueError(
-                f"Function {f.__name__!r} must have at least one parameter when auto_update is enabled (default). "
-                "Any function with no arguments can only run with global interact button click."
-            )
+        if len(ps) == 0:
+            raise ValueError(f"Function {f.__name__!r} must have at least one parameter even if it is a button to click for this func to run.")
         
         gievn_params = set(self.__iparams)
         extra_params = set(f_ps) - gievn_params
@@ -792,7 +743,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             elif (isinstance(widget, ipw.ValueWidget) and 
               not isinstance(widget, (ipw.HTML, ipw.HTMLMath))):
                 controls.append(key)
-            elif key == 'btn-main' or isinstance(widget, ipw.Button):
+            elif isinstance(widget, ipw.Button):
                 controls.append(key) # run buttons always in controls
             else:
                 others.append(key)
@@ -826,14 +777,8 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         return self._groups
     
     def __run_updates(self, **kwargs):
-        btn = getattr(self, 'manual_button', None)
         with self.__user_ctx(), print_error():
-            if btn: 
-                with disabled(btn):
-                    _hint_update(btn, remove=True)
-                    _run_callbacks(self.__icallbacks, kwargs, self) 
-            else:
-                _run_callbacks(self.__icallbacks, kwargs, self) 
+            _run_callbacks(self.__icallbacks, kwargs, self) 
     
     def __user_ctx(self):
         global _user_ctx

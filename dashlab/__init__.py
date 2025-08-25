@@ -7,6 +7,7 @@ Core Components
 - interactive / interact: Quick helpers to spin up lightweight exploratory dashboards.
 - callback: Decorator to register reactive callbacks (optionally with dedicated output areas).
 - var: Wrap arbitrary Python objects as reactive parameters with custom equality semantics.
+- button: Create buttons with icons and alert tooltips for manual callback triggering flexibly.
 - monitor: Decorator providing timing, debounce, throttle and logging for callbacks.
 
 Custom Widgets
@@ -27,7 +28,7 @@ Utilities
 
 from ._version import __version__
 
-from ._internal import var, monitor
+from ._internal import var, monitor, button
 from .base import DashboardBase, callback
 from .core import Dashboard, interactive, interact, markdown, hstack, vstack
 from .utils import print_error, disabled
