@@ -6,6 +6,11 @@ function render({model, el}) {
         el.dataset.description = desc || '';
         el.classList.toggle('has-description', Boolean(desc));
     }
+
+    function updateTabs() {
+        const tabs = model.get('tabs');
+        el.classList.toggle('tabs', Boolean(tabs));
+    }
     
     function createItem(opt) {
         const item = document.createElement('div');
@@ -48,6 +53,7 @@ function render({model, el}) {
     
     updateDescription();
     updateList();
+    updateTabs();
 
      model.on('change:index', () => { // This is apparent internal change, without setting index, not intended to be used by user
         const index = model.get('index');
@@ -56,6 +62,7 @@ function render({model, el}) {
     
     model.on('change:description', updateDescription);
     model.on('change:_options', updateList);
+    model.on('change:tabs', updateTabs);
 
      // Intercept custom messages from the backend
     model.on('msg:custom', (msg) => {

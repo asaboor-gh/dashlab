@@ -116,6 +116,12 @@ class AnyTrait(fixed):
         # Initialize with current value first, then link
         super().__init__(value=getattr(widget,trait,None))
         traitlets.dlink((widget, trait),(self, 'value'))
+        
+class WidgetTrait(AnyTrait):
+    "Class to use (widget, trait_name) as interactive parameter."
+    @property
+    def widget(self):
+        return self._widget
 
 class Changed:
     """A class to track changes in values of params. It itself does not trigger a change. 

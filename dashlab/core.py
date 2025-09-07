@@ -5,7 +5,7 @@ from IPython.display import display
 
 from ipywidgets import DOMWidget, HTML, HBox, VBox
 
-from .base import _docs, DashboardBase, callback
+from .base import _docs, DashboardBase, callback, _useful_traits
 from .utils import _format_docs, _fix_init_sig
 
 @_format_docs(**_docs)
@@ -80,14 +80,17 @@ def interactive(*funcs:list[callable], post_init: callable=None, **kwargs):
     class Interactive(DashboardBase): # Encapsulating
         def _interactive_params(self): return kwargs # Must be overriden in subclass
         def _registered_callbacks(self): return funcs # funcs can be provided by @callback decorated methods or optionally ovveriding it
+        
         def __dir__(self): # avoid clutter of traits for end user on instance
             return ['set_css','set_layout','groups','outputs','params','isfullscreen','changed', 'layout', *_useful_traits] 
-    out = Interactive()
-    if callable(post_init):
-        if len(post_init.__code__.co_varnames) != 1:
-            raise TypeError("post_init should be a callable which accepts instance of interact as argument!")
-        post_init(out) # call it with self, so it can access all methods and attributes
-    return out
+        
+        def __init__(self):
+            super().__init__()
+            if callable(post_init):
+                if len(post_init.__code__.co_varnames) != 1:
+                    raise TypeError("post_init should be a callable which accepts instance of interact as single argument!")
+                post_init(self) # call it with self, so it can access all methods and attributes
+    return Interactive()
 
     
 @_format_docs(other=interactive.__doc__)

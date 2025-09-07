@@ -34,6 +34,7 @@ class ListWidget(AnyWidget,ValueWidget):
     - `value`: Any, currently selected value. 
     - `transform`: Callable, function such that transform(item) -> str, for each item in options. Default is `repr`.
     - `html`: str, HTML representation of the currently selected item through transform.
+    - `tabs`: bool, if True, display as tabs instead of list. This alongwith `ipywidgets.Stack` can be used to create tabbed views.
 
     You can set `ListWidget.layout.max_height` to limit the maximum height (default 400px) of the list. The list will scroll if it exceeds this height.
     """
@@ -44,6 +45,7 @@ class ListWidget(AnyWidget,ValueWidget):
     options     = traitlets.List() # only on backend
     value       = traitlets.Any(None, allow_none=True,read_only=True) # only backend
     html        = traitlets.Unicode('',read_only=True, help="html = transform(value)")  # This is only python side
+    tabs        = traitlets.Bool(False,help="If True, display as tabs instead of list").tag(sync=True)
     
     _esm = Path(__file__).with_name('static') / 'listw.js'
     _css = Path(__file__).with_name('static') / 'listw.css'

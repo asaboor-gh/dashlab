@@ -15,7 +15,7 @@ from typing import List, Callable, Dict, Union, Tuple
 from ipywidgets import DOMWidget, Box # for clean type annotation
 
 from . import _internal # for side effects 
-from ._internal import AnyTrait, Changed, _ValFunc, monitor, _general_css
+from ._internal import AnyTrait, WidgetTrait, Changed, _ValFunc, monitor, _general_css
 from .widgets import FullscreenButton
 from .patches import patched_plotly
 from .utils import print_error, disabled, _build_css, _fix_init_sig, _format_docs, _size_to_css
@@ -110,7 +110,7 @@ _useful_traits =  [
 ]
 # for validation
 _pmethods = ['set_css','set_layout','update','_handle_callbacks']
-_pattrs = ['groups','outputs','params', 'changed','isfullscreen']
+_pattrs = ['_groups','groups','outputs','params', 'changed','isfullscreen', 'children', 'layout','comm']
 _omethods = ["_interactive_params"]
 
 class _DashMeta(type):
@@ -119,7 +119,7 @@ class _DashMeta(type):
 
         # Identify the first meaningful base class (skip 'object')
         primary_base = ([base for base in bases if base is not object] or [None])[0]
-
+        
         # Check protected methods and attributes
         for attr in [*_pmethods,*_pattrs, *_useful_traits]:
             if attr in namespace and primary_base and hasattr(primary_base, attr):
@@ -143,6 +143,8 @@ _docs = {
     - Regular ipywidgets with value trait
     - Fixed widgets using ipw.fixed(widget)
     - String pattern 'widget.trait' for trait observation, 'widget' must be in kwargs or e.g. '.trait' to observe traits on this instance.
+    - Tuple pattern (widget, 'trait') for trait observation where widget is accessible via params and trait value goes to callback.
+      This is useful to have widget and trait in a single parameter, such as `x = (fig, 'selected')` for plotly FigureWidget. Other traits of same widget can be observed by separate parameters with `y = 'x.trait'` pattern.
     - You can use '.fullscreen' to detect fullscreen change and do actions based on that.
     - Use `P = '.params'` to access all parameters in a callback, e.g. `P.x.value = 10` will set x's value to 10 and trigger dependent callbacks.
     - Any DOM widget that needs display (inside fixed too). A widget and its observed trait in a single function are not allowed, such as `f(fig, v)` where `v='fig.selected'`.
@@ -186,6 +188,13 @@ _docs = {
     "css_info": re.sub(r'\bcode(\[.*?\])?\`', '`', _build_css.__doc__, flags=re.DOTALL) # inline code` or code['css']` not supported is dashlab itself
 }
 
+def _expose_widget(v):
+    if isinstance(v,WidgetTrait):
+        return v.widget
+    elif isinstance(v,ipw.fixed) and isinstance(v.value, DOMWidget):
+        return v.value
+    return v
+
 @_add_traits
 @_fix_init_sig
 @_format_docs(**_docs)
@@ -206,7 +215,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         def _interactive_params(self):
             return {{
                 'x': ipw.IntSlider(0, 0, 100),
-                'y': 'x.value',  # observe x's value
+                'y': 'x.value',  # observe x's value or use y = (ipw.IntSlider(), 'value') equivalently
                 'fig': ipw.fixed(go.FigureWidget()),
                 'btn': button(icon='refresh', alert='Update Plot'), # manual update button
             }}
@@ -286,11 +295,13 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         self.__iparams = {} # just empty reference
         extras = self.__fix_kwargs() # params are internally fixed
         
+        # We do not need a global manual button, as each function can have their own button if needed
+        # global button just holds the whole GUI and seems irresponsive and odd in a complex GUI
         super().__init__(self.__run_updates, {'manual': False}, **self.__iparams) # each function can have their own manual button if needed, global does not make sense
         self.unobserve_all("params") # even setting a fixed can trigger callbacks, so remove all
         
         # Attach params as namedtuple trait for object instances
-        wparams = {k : v.value if isinstance(v,ipw.fixed) and isinstance(v.value, DOMWidget) else v # expose fixed widgets
+        wparams = {k : _expose_widget(v) # expose fixed widgets
             for k,v in self.__iparams.items() 
             if not getattr(v, '_self_iparam_ws',False)
         } # avoid params itself wrappend AnyTrait
@@ -315,8 +326,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
 
         for w in self.kwargs_widgets:
             c = getattr(w, '_kwarg','')
-            if isinstance(w, ipw.fixed):
-                w = w.value
+            w = _expose_widget(w) # expose fixed/Trait held widgets
             getattr(w, 'add_class', lambda v: None)(c) # for grid area
             
         self._handle_callbacks() # collects callbacks and run updates
@@ -527,7 +537,9 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
 
         - Parameter names from _interactive_params()
         - Custom 'out-*' classes from `@callback` decorators and 'out-main' from main output.
-
+        - All output widgets have a common 'widget-output' class to style them together.
+        - All control widgets have a common 'widget-control' class to style them together.
+        
         **Example**:       
 
         ```python
@@ -613,6 +625,20 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             elif isinstance(value, ipw.DOMWidget) and not isinstance(value,ipw.ValueWidget): # value widgets are automatically handled
                 params[key] = ipw.fixed(value) # convert to fixed widget, to be passed as value
                 extras[key] = value # we need to show that widget
+            elif isinstance(value, tuple) and len(value) == 2:
+                widget, trait_name = value
+                if isinstance(widget, ipw.DOMWidget) and isinstance(trait_name, str): # valid
+                    if isinstance(widget, ipw.Button): # Button can only be in extras, by fixed or itself
+                        raise ValueError(f"Button widget in parameter {key!r} cannot be observed for traits, use it directly as parameter.")
+                    if trait_name in widget.trait_names():
+                        # Store widget in params for access, observe trait for callbacks
+                        extras[key] = widget  # Widget goes to params/extras/ settings _kwarg for layout
+                        params[key] = WidgetTrait(widget, trait_name)  
+                    else:
+                        raise ValueError(f"Widget in parameter {key!r} does not have trait {trait_name!r}")
+                elif isinstance(widget, DOMWidget) and not isinstance(trait_name, str):
+                    raise TypeError(f"Second item in parameter {key!r} must be a string when first item is a DOMWidget, got {type(trait_name).__name__}")
+                # We do not raise error if first item is not a widget, let it be handled by widget abbreviations later
         
         for key, value in extras.items():
             value._kwarg = key # required for later use
@@ -638,10 +664,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                         params[key] = AnyTrait(self, trait_name)
                     # we don't need mutual exclusion on self, as it is not passed
                 elif name in params: # extras are already cleaned widgets, otherwise params must have key under this condition
-                    w = params.get(name, None)
-                    if isinstance(w, ipw.fixed):
-                        w = w.value # wrapper widget may be
-
+                    w = _expose_widget(params.get(name, None))
                     # We do not want to raise error, so any invalid string can goes to Text widget
                     if isinstance(w, ipw.DOMWidget) and trait_name in w.trait_names():
                         params[key] = AnyTrait(w, trait_name)
@@ -651,7 +674,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         
         # Tag parameter widgets with their names so we can order later
         for key, val in self.__iparams.items():
-            w = val.value if isinstance(val, ipw.fixed) else val
+            w = _expose_widget(val)
             if isinstance(w, ipw.DOMWidget):
                 w._kwarg = key
                 
@@ -747,6 +770,8 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                 controls.append(key) # run buttons always in controls
             else:
                 others.append(key)
+        for c in controls:
+            widgets_dict[c].add_class('widget-control') # similar to widget-output
         return groups(controls=tuple(controls), outputs=tuple(outputs), others=tuple(others))
     
     def __hint_btns_update(self, func):
