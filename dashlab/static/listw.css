@@ -13,31 +13,35 @@
     padding: 0 4px;
     border-radius: 4px 4px 0 0;
     border-bottom: 1px inset #8884;
-    box-sizing: border-box;;
+    box-sizing: border-box;
 }
 
 .list-widget:hover .list-item {
-    box-shadow: 0 0 1px var(--accent-color, #007bff);
+    box-shadow: 0 0 1px #8884;
     margin: 0.5px; /* feels like buttons */
     border-radius: 4px;
 }
 
 /* Tab items styling */
 .list-widget.tabs .list-item {
-    flex-shrink: 0;
+    flex: 0 1 auto;  /* don't grow, but shrink, and base of auto like browser tabs */
+    min-width: 60px;  /* Minimum tab width for usability */
     border-radius: 4px 4px 0 0;
-    margin: 0 2px 0 0;
+    margin: 0 1px 0 0;  /* Reduced margin for tighter spacing */
     white-space: nowrap;
-    min-width: fit-content;
+    text-align: center;  /* Center text in each tab */
+    overflow: hidden;  /* Hide overflow for long text */
+    text-overflow: ellipsis;  /* Show ... for long text */
+    padding: 0.25em 0.75em; /* Add horizontal padding for better appearance */
 }
 
 .list-widget:hover .list-item.selected {
-    border-left: 1px inset var(--accent-color, #007bff); /* show selected item */
+    border-left: 1px inset var(--accent-color, #8884); /* show selected item */
 }
 
 /* Selected tab styling */
 .list-widget.tabs .list-item.selected {
-    border-bottom: 1px inset var(--accent-color, #007bff);
+    border-bottom: 1px inset var(--accent-color, #8884);
     border-radius: 4px 4px 0 0;
     border-left: none;
     font-weight: bold;
@@ -83,16 +87,16 @@
 }
 
 .list-item:hover {
-    border: 0.5px solid var(--accent-color, #007bff);
+    border: 1px solid #8884;
     font-weight: bold;
     transition: all 0.2s ease;
 }
 
 .list-item.selected {
-    box-shadow: 0 0 1px inset var(--accent-color, #007bff);
+    box-shadow: 0 0 1px inset #8884;
     font-weight: bold;
     border-radius: 4px;
-    border-left: 2px solid var(--accent-color, #007bff);
+    border-left: 2px solid var(--accent-color, #8884);
 }
 
 .list-item:active {

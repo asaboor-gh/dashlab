@@ -2,7 +2,7 @@ import time
 import traitlets
 
 from pathlib import Path
-from ipywidgets import ValueWidget
+from ipywidgets import ValueWidget, GridBox, Stack
 from anywidget import AnyWidget
 
 from html import escape
@@ -113,6 +113,64 @@ class ListWidget(AnyWidget,ValueWidget):
         return f'''<style>{self._css}</style>
             <div class="{klass}" {utils._inline_style(self)} data-description="{self.description}">{html}</div>'''
             
+@utils._fix_init_sig
+class TabsWidget(GridBox):
+    titles = traitlets.List([], help="List of tab titles")
+    selected_index = traitlets.Int(0, allow_none=True, help="Index of currently selected tab")
+    vertical = traitlets.Bool(False, help="If True, display tabs vertically on left")
+    tabs_width = traitlets.Unicode('auto', help="width of tabs when vertical") # can be any valid css width
+    tabs_height = traitlets.Unicode('2em', help="height of tabs when horizontal") # can be any valid css height
+    
+    def __init__(self, children=None, titles=None, vertical=False, tabs_width='auto', tabs_height='2em', **kwargs):
+        self._lw = ListWidget(description=None)
+        self._stack = Stack()
+        self._init_titles = titles or [] # store initial titles as list even if no children yet
+        super().__init__(**kwargs)
+        self.add_class('tabs-widget') # for custom styling
+        self.titles = self._reset_titles(titles)
+        traitlets.link((self,'titles'),(self._lw,'options'))
+        
+        self.children = children or [] # set children to stack
+        self.tabs_width = tabs_width
+        self.tabs_height = tabs_height
+        self.vertical = vertical
+        self._update_layout(None) # initial layout update
+        
+        traitlets.link((self,'vertical'),(self._lw,'tabs'), transform=(lambda v: not v, lambda v: not v)) 
+        traitlets.link((self._lw,'index'),(self,'selected_index')) # on click, it should update selected_index
+    
+    @traitlets.observe('selected_index')
+    def _validate_selected(self, change):
+        if change['new'] is not None:
+            if not (0 <= change['new'] < len(self._stack.children)):
+                raise ValueError(f"selected_index should be in [0, {len(self._stack.children)-1}], got {change['new']}")
+            self._stack.selected_index = change['new'] # delegate to stack, it can't directly be linked as value should be in limites
+    
+    @traitlets.observe('vertical', 'tabs_width', 'tabs_height')
+    def _update_layout(self, change):
+        self.layout.grid_template_columns = f'{self.tabs_width} 1fr' if self.vertical else '1fr'
+        self._lw.layout.height = self.tabs_height if not self.vertical else 'auto'
+    
+    @traitlets.validate('children')
+    def _validate_children(self, proposal):
+        children = proposal['value']
+        self._stack.children = children # delegate children to stack
+        self.titles = self._reset_titles(self.titles)
+        if self._stack.children:
+            self._lw.index = 0 # select first by default at each reset of children
+            self._stack.selected_index = 0 # don't know why this does not update automatically
+        return (self._lw, self._stack) # Always two children
+    
+    def _reset_titles(self, titles):
+        titles = (titles or self._init_titles)[:len(self._stack.children)] # handle None titles
+        if len(titles) < len(self._stack.children):
+            titles += ['Tab {}'.format(i) for i in range(len(titles), len(self._stack.children))]
+        return titles
+    
+    @traitlets.validate('titles')
+    def _validate_titles(self, proposal):
+        return self._reset_titles(proposal['value'])
+        
 
 @utils._fix_trait_sig
 class AnimationSlider(AnyWidget, ValueWidget):

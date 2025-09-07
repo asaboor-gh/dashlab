@@ -311,6 +311,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         
         self.set_trait('params', namedtuple('InteractiveParams', wparams.keys())(**wparams))
         
+        # Need to fix kwargs_widgets too
         for v in self.kwargs_widgets:
             if getattr(v, '_self_iparam_ws',False):
                 v.value = self.params # update to pick widgets in kwargs later
@@ -538,7 +539,9 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         - Parameter names from _interactive_params()
         - Custom 'out-*' classes from `@callback` decorators and 'out-main' from main output.
         - All output widgets have a common 'widget-output' class to style them together.
-        - All control widgets have a common 'widget-control' class to style them together.
+        - All params widgets have a common 'widget-param' class to style them together.
+        - All control widgets inside params also have have a common 'widget-control' class to style them together.
+        - The selector `.widget-param:not(.widget-control)` can be used to target only non-control param widgets like figures, HTML etc.
         
         **Example**:       
 
@@ -771,7 +774,9 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             else:
                 others.append(key)
         for c in controls:
-            widgets_dict[c].add_class('widget-control') # similar to widget-output
+            widgets_dict[c].add_class('widget-param').add_class('widget-control') # similar to widget-output added by ipywidgets
+        for o in others:
+            widgets_dict[o].add_class('widget-param') # what else
         return groups(controls=tuple(controls), outputs=tuple(outputs), others=tuple(others))
     
     def __hint_btns_update(self, func):
