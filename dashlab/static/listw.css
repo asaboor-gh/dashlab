@@ -13,6 +13,7 @@
     padding: 0 4px;
     border-radius: 4px 4px 0 0;
     border-bottom: 1px inset #8884;
+    box-sizing: border-box;;
 }
 
 .list-widget:hover .list-item {
@@ -37,6 +38,7 @@
 /* Selected tab styling */
 .list-widget.tabs .list-item.selected {
     border-bottom: 1px inset var(--accent-color, #007bff);
+    border-radius: 4px 4px 0 0;
     border-left: none;
     font-weight: bold;
 }
@@ -89,6 +91,7 @@
 .list-item.selected {
     box-shadow: 0 0 1px inset var(--accent-color, #007bff);
     font-weight: bold;
+    border-radius: 4px;
     border-left: 2px solid var(--accent-color, #007bff);
 }
 
