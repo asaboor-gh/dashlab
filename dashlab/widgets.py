@@ -34,7 +34,7 @@ class ListWidget(AnyWidget,ValueWidget):
     - `value`: Any, currently selected value. 
     - `transform`: Callable, function such that transform(item) -> str, for each item in options. Default is `repr`.
     - `html`: str, HTML representation of the currently selected item through transform.
-    - `tabs`: bool, if True, display as tabs instead of list. This alongwith `ipywidgets.Stack` can be used to create tabbed views.
+    - `tabs`: bool, if True, display as tabs instead of list. This alongwith `ipywidgets.Stack` can be used to create tabbed views like `dashlab.widgets.TabsWidget`.
 
     You can set `ListWidget.layout.max_height` to limit the maximum height (default 400px) of the list. The list will scroll if it exceeds this height.
     """
@@ -115,6 +115,25 @@ class ListWidget(AnyWidget,ValueWidget):
             
 @utils._fix_init_sig
 class TabsWidget(GridBox):
+    """A tabbed view widget that can contain multiple child widgets, with clickable tabs to switch between them.
+    
+    - `children`: List[Widget], list of child widgets to display in tabs.
+    - `titles`: List[str], list of titles for each tab. If not provided, defaults to "Tab 0", "Tab 1", etc.
+    - `selected_index`: int, index of the currently selected tab. Default is 0.
+    - `vertical`: bool, if True, display tabs vertically on the left side. Default is False (horizontal tabs).
+    - `tabs_width`: str, width of the tabs when vertical. Can be any valid CSS width (e.g., '200px', '20%'). Default is 'auto'.
+    - `tabs_height`: str, height of the tabs when horizontal. Can be any valid CSS height (e.g., '2em', '50px'). Default is '2em'.
+    
+    Example usage:
+    ```python
+    from ipywidgets import Text, IntSlider
+    from dashlab.widgets import TabsWidget
+    tab1 = Text(description="Name")
+    tab2 = IntSlider(description="Age", min=0, max=100)
+    tabs = TabsWidget(children=[tab1, tab2], titles=["Personal Info", "Age Selector"], vertical=False)
+    display(tabs)
+    ```
+    """
     titles = traitlets.List([], help="List of tab titles")
     selected_index = traitlets.Int(0, allow_none=True, help="Index of currently selected tab")
     vertical = traitlets.Bool(False, help="If True, display tabs vertically on left")
