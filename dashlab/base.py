@@ -11,8 +11,7 @@ import ipywidgets as ipw
 from contextlib import nullcontext
 from collections import namedtuple
 from types import FunctionType
-from typing import List, Callable, Dict, Union, Tuple
-from ipywidgets import DOMWidget, Box # for clean type annotation
+from ipywidgets import DOMWidget # for clean type annotation
 
 from . import _internal # for side effects 
 from ._internal import AnyTrait, WidgetTrait, Changed, _ValFunc, monitor, _general_css
@@ -109,7 +108,7 @@ _useful_traits =  [
     'grid_gap', 'justify_content','align_items'
 ]
 # for validation
-_pmethods = ['set_css','set_layout','update','_handle_callbacks']
+_pmethods = ['set_css','set_layout','update','gather','_handle_callbacks']
 _pattrs = ['_groups','groups','outputs','params', 'changed','isfullscreen', 'children', 'layout','comm']
 _omethods = ["_interactive_params"]
 
@@ -174,7 +173,7 @@ _docs = {
     - params: Read-only trait for all parameters used in this interact in widget form. Can be accessed inside callbacks by observing as `P = '.params'` 
       alongwith some `x = True` -> Checkbox, and then inside a callback `P.x.value = False` will uncheck the Checkbox and trigger depnendent callbacks.
     - groups: NamedTuple(controls, outputs, others) - Widget names by type
-    - outputs: Tuple[Output] - Output widgets from callbacks
+    - outputs: tuple[Output] - Output widgets from callbacks
     """,
     "features": """
     **Features**:    
@@ -236,7 +235,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
     dash = MyDashboard()
     dash.set_layout(
         left_sidebar=dash.groups.controls,  # controls on left
-        center=[(ipw.VBox(), ('fig', ipw.HTML('Showing Stats'), 'out-stats')),]  # plot and stats in a VBox explicitly
+        center= ipw.VBox(dash.gather('fig', ipw.HTML('Showing Stats'), # plot and stats in a VBox explicitly
     )
     
     # Style with CSS Grid
@@ -282,6 +281,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         self.__app.layout.position = 'relative' # contain absolute items inside
         self.__app._size_to_css = _size_to_css # enables em, rem
         self.__app._user_layout = {} # store user layout for dynamic updates
+        self.__app._used_names = set() # store used names to avoid duplicates, handled in set_layout and gather functions
         self.__other = ipw.VBox().add_class('other-area') # this should be empty to enable CSS perfectly, unless filled below
         self.update = self.__update # needs avoid checking in metaclass, but restric in subclasses, need before setup
         self.__setup()
@@ -331,8 +331,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             getattr(w, 'add_class', lambda v: None)(c) # for grid area
             
         self._handle_callbacks() # collects callbacks and run updates
-        self.set_layout(center=list(self.__all_widgets.keys())) # default layout, needs all widgets first time
-    
+        
     def __order_widgets(self, outputs):
         kw_map = {w._kwarg: w for w in self.params if hasattr(w, '_kwarg') and isinstance(w, DOMWidget)}
         # 1) controls in declared order
@@ -357,7 +356,10 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         outputs = self.__func2widgets() # build stuff, before actual interact
         self.__all_widgets = self.__order_widgets(outputs) # save it once for sending to app layout set afterwards
         self._groups = self.__create_groups(self.__all_widgets) # create groups of widgets
-        self.set_layout(**self.__app._user_layout) # this will reset new and old outputs in layout
+        if self.__app._user_layout:
+            self.set_layout(**self.__app._user_layout) # this will reset new and old outputs in layout
+        else:
+            self.set_layout(center=list(self.__all_widgets.keys())) # default layout, needs all widgets first time
         self.update() # crucial: run all callbacks once to update outputs, only changed params will trigger callbacks, or new added ones
     
     def __repr__(self): # it throws very big repr, so just show class name and id
@@ -368,6 +370,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             raise TypeError("layout should be a dictionary passed to set_layout for positioning widgets!")
         
         allowed_keys = inspect.signature(self.set_layout).parameters.keys()
+        layout_widgets = layout.copy() # avoid changing user dict
         for key, value in layout.items():
             if not key in allowed_keys:
                 raise KeyError(f"keys in layout should be one of {allowed_keys}, got {key!r}")
@@ -375,64 +378,69 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             if value is None or key not in ["header", "footer", "center", "left_sidebar", "right_sidebar"]:
                 continue  # only validate content areas, but go for all, don't retrun
 
-            if not isinstance(value, (list, tuple)):
+            if not isinstance(value, (list, tuple, DOMWidget)):
                 raise TypeError(
-                    f"{key!r} in layout should be a list/tuple of widget names or "
-                    f"(Box_instance, [names]) tuples, got {type(value).__name__}"
+                    f"{key!r} in layout should be a list/tuple of widgets/names or "
+                    f"a DOMWidget instance, got {type(value).__name__}"
                 )
             
-            for i, name in enumerate(value,start=1):
-                if isinstance(name,str):
-                    if not name in self.__all_widgets:
-                        raise ValueError(
-                            f"Invalid widget name {name!r} in {key!r} at position {i}. "
-                            f"Valid names are: {list(self.__all_widgets.keys())}")
-                    continue # valid widget name, no need to check further
-
-                if isinstance(name, ipw.DOMWidget):
-                    continue # Allow widgets in layout other than just from params
-
-                if not isinstance(name, (list,tuple)):
-                    raise TypeError(
-                        f"Item at position {i} in {key!r} must be a widget name or "
-                        f"(Box_instance, [names]) tuple, got {type(name).__name__}")
-                
-                if len(name) != 2:
-                    raise ValueError(
-                        f"Tuple at position {i} in {key!r} must have exactly 2 items: "
-                        f"(Box_instance, [names]), got {len(name)} items")
-                    
-                box, children = name
-
-                if not isinstance(box, ipw.Box):
-                    raise TypeError(f"First item of tuple at position {i} in {key!r} must be a Box widget instance, got {type(box).__name__}")
+            if isinstance(value, (list,tuple)):
+                try:
+                    layout_widgets[key] = self.gather(*value) # validate and gather widgets
+                except Exception as e:
+                    raise type(e)(f"In {key!r} of layout: {e}") from e # better error message     
+        return layout_widgets
     
-                if not isinstance(children, (list,tuple)):
-                    raise TypeError(
-                        f"Second item of tuple at position {i} in {key!r} must be a list/tuple "
-                        f"of widget names, got {type(children).__name__}")
-                
-                for child in children:
-                    if not isinstance(child, (str, ipw.DOMWidget)):
-                        raise TypeError(
-                            f"Widget names in tuple at position {i} in {key!r} must be strings or widgets, "
-                            f"got {type(child).__name__}")
-                    
-                    if isinstance(child, str) and child not in self.__all_widgets:
-                        raise ValueError(
-                            f"Invalid widget name {child!r} in tuple at position {i} in {key!r}. "
-                            f"Valid names are: {list(self.__all_widgets.keys())}")
-    
-    def relayout(self,*args, **kwargs):raise NotImplementedError("Use set_layout method instead of relayout!")
+    def gather(self, *widgets: 'str | DOMWidget') -> 'tuple[DOMWidget]':
+        """Get list of widgets by names or general widgets for layout configuration.
+        This can be used to collect widgets to embed at any nesting level in layout.
+        
+        **Parameters**:         
+
+        - widgets (str | DOMWidget): Widget names as strings or widget instances.
+
+        **Returns**:         
+
+        - List of DOMWidget instances corresponding to the provided names or instances.
+
+        **Example**:       
+
+        ```python
+        # fig is a FigureWidget param, out-stats is a callback output
+        app.set_layout(
+            left_sidebar = ['x','y'], # or dash.gather('x','y') is same
+            center = app.TabsWidget(
+                app.gether('fig', ipw.HTML('Showing Stats'), 'out-stats')
+            ) # Not possible to pass names list directly inside a nested widget container, so use gather in nesting levels
+        ) # app is instance of DashboardBase
+        # Placed (FigureWidget, HTML, Output) at, can be used in set_layout
+        ```
+        
+        **⚠️ Important**: Widgets gathered but not actually used in `set_layout()` will be marked as "used" 
+        and will NOT appear in the layout. Only call `gather()` when you intend to pass the result to `set_layout()`.
+        """
+        collected = []
+        for name in widgets:
+            if isinstance(name, str):
+                if name in self.__all_widgets:
+                    collected.append(self.__all_widgets[name])
+                    self.__app._used_names.add(name) # mark as used
+                else:
+                    raise ValueError(f"Invalid widget name {name!r}. Valid names are: {list(self.__all_widgets.keys())}")
+            elif isinstance(name, ipw.DOMWidget):
+                collected.append(name)
+            else:
+                raise TypeError(f"Each item must be a string or DOMWidget, got {type(name).__name__}")
+        return tuple(collected)
     
     def set_layout(self, 
-        header: List[Union[str, DOMWidget,Tuple[Box, List]]] = None, 
-        center: List[Union[str, DOMWidget,Tuple[Box, List]]] = None, 
-        left_sidebar: List[Union[str, DOMWidget,Tuple[Box, List]]] = None,
-        right_sidebar: List[Union[str, DOMWidget,Tuple[Box, List]]] = None,
-        footer: List[Union[str, DOMWidget,Tuple[Box, List]]] = None,
-        pane_widths: Tuple[float, float, float] = None, 
-        pane_heights: Tuple[float, float, float] = None,
+        header: 'list[str, DOMWidget] | DOMWidget' = None, 
+        center: 'list[str, DOMWidget] | DOMWidget' = None, 
+        left_sidebar: 'list[str, DOMWidget] | DOMWidget' = None,
+        right_sidebar: 'list[str, DOMWidget] | DOMWidget' = None,
+        footer: 'list[str, DOMWidget] | DOMWidget' = None,
+        pane_widths: tuple[float, float, float] = None, 
+        pane_heights: tuple[float, float, float] = None,
         merge: bool = True, 
         grid_gap: str = None, 
         width: str = None,
@@ -450,12 +458,12 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             - left_sidebar: Left side widgets
             - right_sidebar: Right side widgets  
             - footer: Bottom widgets
-            - Each of above must be a List[str | DOMWidget | (Box, List[str | DOMWidget])] of widget params names if given. 
-                - Box is instance of ipywidgets.Box() initialized without children.
-                - Support of any widget other than just params in layout enables flexible and rich dashboards.
+            - Each of above must be of type `list[str, DOMWidget] | DOMWidget` of widgets/ params names if given. 
+                - To get params/outputs by names at a nesting level, use `gather()` method, e.g. `center = TabsWidget(dash.gather('fig', 'out-stats'))`
+                - If a single widget is passed, it will be used directly, if a list/tuple is passed, it will be wrapped in a VBox (except center which uses GridBox).
         - Grid Properties:
-            - pane_widths: List[str] - Widths for [left, center, right]
-            - pane_heights: List[str] - Heights for [header, center, footer]
+            - pane_widths: list[str] - Widths for [left, center, right]
+            - pane_heights: list[str] - Heights for [header, center, footer]
             - grid_gap: str - Gap between grid cells
             - width: str - Overall width
             - height: str - Overall height
@@ -483,36 +491,25 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         - Other areas use vertical box layout
         """
         layout = {key:value for key,value in locals().items() if key != 'self'}
-        self.__validate_layout(layout)
-        self.__app._user_layout = layout # store for dynamic updates if callbacks change widgets
+        layout_widgets = self.__validate_layout(layout)
+        self.__app._user_layout = layout # store for dynamic updates if callbacks change widgets, after validation
         self.__other.children = () # reset other area, it will be filled later
         areas = ["header","footer", "center", "left_sidebar","right_sidebar"]
         for key in areas:
             self.__app.set_trait(key, None) # reset all areas first
-
-        collected = []
-        for key, value in layout.items():
-            if value and key in areas: 
-                collected.extend(list(value))
-                box = ipw.GridBox if key == 'center' else ipw.VBox
-                children = []
-                for name in value:
-                    if isinstance(name,str) and name in self.__all_widgets:
-                        children.append(self.__all_widgets[name])
-                    elif isinstance(name, ipw.DOMWidget): # any random widget is allowed in layout
-                        children.append(name)
-                    elif isinstance(name, (list,tuple)) and len(name) == 2: # already checked, but just in case
-                        nested_box, childs = name
-                        nested_box.children = tuple([self.__all_widgets[n] if n in self.__all_widgets else n for n in childs])
-                        collected.extend([c for c in childs if isinstance(c, str)]) # avoid showing nested ones again.
-                        children.append(nested_box) # add box to  main children
-                    
-                self.__app.set_trait(key, box(children, _dom_classes = (key.replace('_','-'),))) # for user CSS
+            
+        for key, value in layout_widgets.items():
+            if value and key in areas:
+                if isinstance(value, (list,tuple)): # otherwise would be a widget
+                    value = (ipw.GridBox if key == 'center' else ipw.VBox)(value)
+                self.__app.set_trait(key, value.add_class(key.replace('_','-'))) # for user CSS
             elif value: # class own traits and Layout properties are linked here
-                self.set_trait(key, value) 
-        
-        self.__other.children += tuple([v for k,v in self.__all_widgets.items() if k not in collected])
-        
+                self.__app.set_trait(key, value)
+               
+        self.__other.children += tuple([v for k,v in self.__all_widgets.items() if k not in self.__app._used_names])
+        del layout_widgets # release references
+        self.__app._used_names.clear() # reset used names, will be filled again via gather internally
+
         # We are adding a reaonly isfullscreen trait set through button on parent class
         fs_btn = FullscreenButton()
         fs_btn.observe(lambda c: self.set_trait('isfullscreen',c.new), names='isfullscreen') # setting readonly property
@@ -586,12 +583,12 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             _css += ("\n" + _build_css((cent_sl,), center))
         self.__style_html.value = f'<style>{_css}</style>'
     
-    def _interactive_params(self) -> Dict:
+    def _interactive_params(self) -> dict:
         "Implement this in subclass to provide a dictionary for creating widgets and observers."
         raise NotImplementedError("implement _interactive_params(self) method in subclass, "
             "which should returns a dictionary of interaction parameters.")
     
-    def _registered_callbacks(self) -> List[Callable]:
+    def _registered_callbacks(self) -> list[callable]:
         """Collect all methods marked as callbacks. If overridden by subclass, should return a tuple of functions."""
         funcs = []
         for name, attr in self.__class__.__dict__.items():
@@ -821,7 +818,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
 
 
 
-def callback(output:str = None, *, timeit:bool = False, throttle:int = None, debounce:int = None, logger:Callable = None) -> Callable:
+def callback(output:str = None, *, timeit:bool = False, throttle:int = None, debounce:int = None, logger:callable = None) -> callable:
     """Decorator to mark methods as interactive callbacks in DashboardBase subclasses or for interactive funcs.
     
     **func**: The method to be marked as a callback.  

@@ -82,7 +82,7 @@ def interactive(*funcs:list[callable], post_init: callable=None, **kwargs):
         def _registered_callbacks(self): return funcs # funcs can be provided by @callback decorated methods or optionally ovveriding it
         
         def __dir__(self): # avoid clutter of traits for end user on instance
-            return ['set_css','set_layout','groups','outputs','params','isfullscreen','changed', 'layout', *_useful_traits] 
+            return ['set_css','set_layout','gather', 'groups','outputs','params','isfullscreen','changed', 'layout', *_useful_traits] 
         
         def __init__(self):
             super().__init__()
@@ -161,7 +161,7 @@ class Dashboard(DashboardBase):
         super().__init__()
     
     def __dir__(self): # avoid clutter of traits for end user on instance
-        return ['callback', 'set_css','set_layout','groups','outputs','params','isfullscreen','changed', 'layout', *_useful_traits] 
+        return ['callback', 'set_css','set_layout', 'gather', 'groups','outputs','params','isfullscreen','changed', 'layout', *_useful_traits] 
 
     def _interactive_params(self): return self._iapp_params
     def _registered_callbacks(self): return tuple(self._iapp_callbacks.values())
