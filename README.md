@@ -1,6 +1,6 @@
 # DashLab
 
-[![](https://jupyterlite.rtfd.io/en/latest/_static/badge.svg)](https://asaboor-gh.github.io/einteract-docs/notebooks/index.html?path=dashlab.ipynb)
+[![](https://jupyterlite.rtfd.io/en/latest/_static/badge.svg)](https://asaboor-gh.github.io/litepad/notebooks/index.html?path=dashlab.ipynb)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/asaboor-gh/dashlab/HEAD?urlpath=%2Fdoc%2Ftree%2Fdemo.ipynb)
 [![PyPI version](https://badge.fury.io/py/dashlab.svg)](https://badge.fury.io/py/dashlab)
 [![Downloads](https://pepy.tech/badge/dashlab)](https://pepy.tech/project/dashlab)
@@ -27,7 +27,7 @@ pip install -e .
 **✨ Try it in your browser ✨**
 | Jupyter Lab  | Notebook | Binder |
 |----|---|--- |
-|  [![](https://jupyterlite.rtfd.io/en/latest/_static/badge.svg)](https://asaboor-gh.github.io/einteract-docs/lab/index.html?path=dashlab.ipynb)  |  [![](https://jupyterlite.rtfd.io/en/latest/_static/badge.svg)](https://asaboor-gh.github.io/einteract-docs/notebooks/index.html?path=dashlab.ipynb) | [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/asaboor-gh/dashlab/HEAD?urlpath=%2Fdoc%2Ftree%2Fdemo.ipynb) |
+|  [![](https://jupyterlite.rtfd.io/en/latest/_static/badge.svg)](https://asaboor-gh.github.io/litepad/lab/index.html?path=dashlab.ipynb)  |  [![](https://jupyterlite.rtfd.io/en/latest/_static/badge.svg)](https://asaboor-gh.github.io/litepad/notebooks/index.html?path=dashlab.ipynb) | [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/asaboor-gh/dashlab/HEAD?urlpath=%2Fdoc%2Ftree%2Fdemo.ipynb) |
 
 ## Features
 
@@ -37,6 +37,8 @@ pip install -e .
     - Included custom built widgets for enhanced interaction. 
     - Pass any DOMWidget as a parameter to `interact/interactive` functions unlike default `ipywidgets.interactive` behavior.
     - Observe any trait of the widget by `'widget_name.trait_name'` where `'widget_name'` is assigned to a `widget`/`fixed(widget)` in control parameters, OR `'.trait_name'` if `trait_name` exists on instance of interactive.
+    - Tuple pattern (widget, 'trait') for trait observation where widget is accessible via params and trait value goes to callback.
+    This is useful to have widget and trait in a single parameter, such as `x = (fig, 'selected')` for plotly FigureWidget. Other traits of same widget can be observed by separate parameters with `y = 'x.trait'` pattern.
     - You can use '.fullscreen' to detect fullscreen change and do actions based on that.
     - Use `.params` to acess widgets built with given parameters.
     - Use `var` to observe any python variable which is not a widget and trigger callbacks when `var.value` changes.
