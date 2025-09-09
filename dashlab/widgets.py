@@ -168,6 +168,7 @@ class TabsWidget(GridBox):
     @traitlets.observe('vertical', 'tabs_width', 'tabs_height')
     def _update_layout(self, change):
         self.layout.grid_template_columns = f'{self.tabs_width} 1fr' if self.vertical else '1fr'
+        self.layout.grid_template_rows = '1fr' if self.vertical else f'{self.tabs_height} 1fr'
         self._lw.layout.height = self.tabs_height if not self.vertical else 'auto'
     
     @traitlets.validate('children')

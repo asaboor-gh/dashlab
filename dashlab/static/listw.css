@@ -1,8 +1,11 @@
 .list-widget {
     display: flex;
     flex-direction: column;
-    border-radius: 4px;
     overflow-y: auto; /* user can set max height, so allow this */
+}
+
+.list-widget:not(.tabs) {
+    border-radius: 4px;
     margin-block: 0.5em 0.5em;
 }
 
@@ -10,7 +13,6 @@
 .list-widget.tabs {
     flex-direction: row;
     margin-bottom: 0;
-    padding: 0 4px;
     border-radius: 4px 4px 0 0;
     border-bottom: 1px inset #8884;
     box-sizing: border-box;
