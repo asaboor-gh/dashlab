@@ -252,7 +252,7 @@ _general_css = {
         'padding': '4px 8px',
         'display': 'grid', # outputs are not displaying correctly otherwise
     },
-    '< .ips-interact': {
+    '< .dl-dashboard': {
         '^:fullscreen > *, > *': {'margin' : 0}, # this is import for fullscreen mode to be margin-less directly
         '.jp-RenderedHTML': {'padding-right':0}, # feels bad
     },
@@ -278,7 +278,7 @@ _general_css = {
         "25%": { "content": "'●'" }, "50%": { "content": "'●●●'" }, 
         "75%": { "content": "'●●●●●'" }, "100%": { "content": "''" },
     },
-    '< .ips-interact > .other-area:not(:empty)': { # to distinguish other area when not empty
+    '< .dl-dashboard > .other-area:not(:empty)': { # to distinguish other area when not empty
         'border-top': '1px inset var(--jp-border-color2, #8988)',
     },
     '.widget-vslider, .jupyter-widget-vslider': {'width': 'auto'}, # otherwise it spans too much area

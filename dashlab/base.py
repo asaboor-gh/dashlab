@@ -276,7 +276,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         self.__css_class = 'i-'+str(id(self))
         self.__style_html = ipw.HTML()
         self.__style_html.layout.position = 'absolute' # avoid being grid part
-        self.__app = ipw.AppLayout().add_class('interact-app') # base one
+        self.__app = ipw.AppLayout().add_class('dl-DashApp') # base one
         self.__app.layout.display = 'grid' # for correct export to html, other props in set_css
         self.__app.layout.position = 'relative' # contain absolute items inside
         self.__app._size_to_css = _size_to_css # enables em, rem
@@ -317,7 +317,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                 v.value = self.params # update to pick widgets in kwargs later
                 
         # Fix CSS classes and other stuff
-        self.add_class('ips-interact').add_class(self.__css_class)
+        self.add_class('dl-dashboard').add_class(self.__css_class)
         self.layout.position = 'relative' # contain absolute items inside
         self.layout.height = 'max-content' # adopt to inner height
 
@@ -569,13 +569,13 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         if center and not isinstance(center,dict):
             raise TypeError('center should be a nesetd dictionary of CSS properties to apply to central grid!')
         
-        main_sl = f".{self.__css_class}.widget-interact.ips-interact > .interact-app" # directly inside
+        main_sl = f".{self.__css_class}.widget-interact.dl-dashboard > .dl-DashApp" # directly inside
         cent_sl = f"{main_sl} > .center"
-        _css = _build_css(('.ips-interact > .interact-app',),_general_css)
+        _css = _build_css(('.dl-dashboard > .dl-DashApp',),_general_css)
 
         fs_css = main.pop(':fullscreen',{}) or main.pop('^:fullscreen',{}) # both valid
         if fs_css: # fullscreen css given by user, full screen is top interact, not inside one as button is there
-            _css += ('\n' + _build_css((f".{self.__css_class}.widget-interact.ips-interact:fullscreen > .interact-app",), fs_css))
+            _css += ('\n' + _build_css((f".{self.__css_class}.widget-interact.dl-dashboard:fullscreen > .dl-DashApp",), fs_css))
         
         if main:
             _css += ("\n" + _build_css((main_sl,), main))
