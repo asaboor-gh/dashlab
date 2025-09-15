@@ -109,7 +109,7 @@ _useful_traits =  [
 ]
 # for validation
 _pmethods = ['set_css','set_layout','update','gather','_handle_callbacks']
-_pattrs = ['_groups','groups','outputs','params', 'changed','isfullscreen', 'children', 'layout','comm']
+_pattrs = ['params','changed','isfullscreen', 'children', 'layout','comm']
 _omethods = ["_interactive_params"]
 
 class _DashMeta(type):
@@ -184,7 +184,15 @@ _docs = {
     - Dynamic widget property updates
     - Built-in fullscreen support
     """,
-    "css_info": re.sub(r'\bcode(\[.*?\])?\`', '`', _build_css.__doc__, flags=re.DOTALL) # inline code` or code['css']` not supported is dashlab itself
+    "css_info": re.sub(r'\bcode(\[.*?\])?\`', '`', _build_css.__doc__, flags=re.DOTALL), # inline code` or code['css']` not supported is dashlab itself
+    "gather": """
+    - Name of widgets from params or output widgets from callbacks by their CSS class names (e.g. 'out-stats').
+    - Special group names: `*all`, `*out`, `*ctrl`, `*repr` for all widgets, outputs, controls, representation widgets respectively.
+    - Regex patterns to match full widget names (e.g. 'fig.*' to match 'fig1', 'fig2' etc.). Only raises error if regex is invalid, not if no matches found.
+    - Exclusion patterns with '!' prefix (e.g. '!widget-name', '!out-.*' to exclude specific widgets or regex patterns). 
+      This takes precedence over inclusion and can not be used with special group names, e.g. '!*out' is invalid.
+    - Direct DOMWidget instances can also be passed in any order to include external widgets not in params/outputs.
+    """
 }
 
 def _expose_widget(v):
@@ -193,6 +201,15 @@ def _expose_widget(v):
     elif isinstance(v,ipw.fixed) and isinstance(v.value, DOMWidget):
         return v.value
     return v
+
+def _used_widgets(box): # recursively find used widget names in layout
+    used_names = {box._kwarg} if hasattr(box, '_kwarg') else set() # box itself can be a widget with _kwarg
+    for w in box.children:
+        if isinstance(w, ipw.Box):
+            used_names.update(_used_widgets(w))
+        elif hasattr(w, '_kwarg') and w._kwarg not in used_names:
+            used_names.add(w._kwarg)
+    return used_names
 
 @_add_traits
 @_fix_init_sig
@@ -234,7 +251,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
     # Create and layout
     dash = MyDashboard()
     dash.set_layout(
-        left_sidebar=dash.groups.controls,  # controls on left
+        left_sidebar=['*ctrl'],  # control widgets on left
         center= ipw.VBox(dash.gather('fig', ipw.HTML('Showing Stats'), # plot and stats in a VBox explicitly
     )
     
@@ -281,7 +298,6 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         self.__app.layout.position = 'relative' # contain absolute items inside
         self.__app._size_to_css = _size_to_css # enables em, rem
         self.__app._user_layout = {} # store user layout for dynamic updates
-        self.__app._used_names = set() # store used names to avoid duplicates, handled in set_layout and gather functions
         self.__other = ipw.VBox().add_class('other-area') # this should be empty to enable CSS perfectly, unless filled below
         self.update = self.__update # needs avoid checking in metaclass, but restric in subclasses, need before setup
         self.__setup()
@@ -308,7 +324,11 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         for child in self.children:
             if hasattr(child, '_kwarg') and child._kwarg in wparams: # keep only in params, not all, like button, and outputs
                 wparams[child._kwarg] = child # Exposes widgets in params for setting options inside callbacks to trigger updates in chain
-        
+
+        # Make sure widgets are not used from any other instance, which can cause side effects
+        for k, w in wparams.items():
+            self.__mark_instance(k, w, check=True)
+            
         self.set_trait('params', namedtuple('InteractiveParams', wparams.keys())(**wparams))
         
         # Need to fix kwargs_widgets too
@@ -324,6 +344,8 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         self.children += (*extras, self.__style_html) # add extra widgets to box children
         self.out.add_class("out-main")
         self.out._kwarg = "out-main" # needs to be in all widgets
+        self.__mark_instance("out-main", self.out)
+        self.__out_main = self.out # keep a reference, so if user changes self.out, we still have it     
 
         for w in self.kwargs_widgets:
             c = getattr(w, '_kwarg','')
@@ -331,6 +353,13 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             getattr(w, 'add_class', lambda v: None)(c) # for grid area
             
         self._handle_callbacks() # collects callbacks and run updates
+        self.set_css() # apply default CSS
+    
+    def __mark_instance(self, name, widget, check=False):
+        if isinstance(widget,DOMWidget): # check used only for params widgets
+            if check and hasattr(widget, '_dl_instance_id') and widget._dl_instance_id != self.__css_class:
+                raise ValueError(f"Widget {name!r} is already used in another Dashboard instance, use a unique widget for each instance to avoid side effects!")
+            widget._dl_instance_id = self.__css_class # mark as used in this instance
         
     def __order_widgets(self, outputs):
         kw_map = {w._kwarg: w for w in self.params if hasattr(w, '_kwarg') and isinstance(w, DOMWidget)}
@@ -343,7 +372,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         # 2) outputs in registration order and shoould have _kwarg internally
         ordered.update({out._kwarg: out for out in outputs})
         # 3) main output
-        ordered["out-main"] = self.out
+        ordered["out-main"] = self.__out_main
         # 4) anything else with _kwarg not yet included
         ordered.update({name: w for name, w in kw_map.items() if name not in ordered})
         return ordered 
@@ -355,7 +384,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         
         outputs = self.__func2widgets() # build stuff, before actual interact
         self.__all_widgets = self.__order_widgets(outputs) # save it once for sending to app layout set afterwards
-        self._groups = self.__create_groups(self.__all_widgets) # create groups of widgets
+        self.__groups = self.__create_groups(self.__all_widgets) # create groups of widgets
         if self.__app._user_layout:
             self.set_layout(**self.__app._user_layout) # this will reset new and old outputs in layout
         else:
@@ -391,48 +420,87 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                     raise type(e)(f"In {key!r} of layout: {e}") from e # better error message     
         return layout_widgets
     
-    def gather(self, *widgets: 'str | DOMWidget') -> 'tuple[DOMWidget]':
+    @_format_docs(**_docs)
+    def gather(self, *widgets: 'str | DOMWidget') -> tuple[DOMWidget]:
         """Get list of widgets by names or general widgets for layout configuration.
         This can be used to collect widgets to embed at any nesting level in layout.
         
-        **Parameters**:         
-
-        - widgets (str | DOMWidget): Widget names as strings or widget instances.
-
-        **Returns**:         
-
-        - List of DOMWidget instances corresponding to the provided names or instances.
+        **Parameters** (str | DOMWidget):         
+        {gather}
+        **Returns**: List of DOMWidget instances corresponding to the provided names or instances.
 
         **Example**:       
 
         ```python
         # fig is a FigureWidget param, out-stats is a callback output
         app.set_layout(
-            left_sidebar = ['x','y'], # or dash.gather('x','y') is same
+            left_sidebar = ['x','y'], # or dash.gather('x','y') is same, or if only two controls x,y then *ctrl works too
             center = app.TabsWidget(
                 app.gether('fig', ipw.HTML('Showing Stats'), 'out-stats')
             ) # Not possible to pass names list directly inside a nested widget container, so use gather in nesting levels
         ) # app is instance of DashboardBase
         # Placed (FigureWidget, HTML, Output) at, can be used in set_layout
         ```
-        
-        **⚠️ Important**: Widgets gathered but not actually used in `set_layout()` will be marked as "used" 
-        and will NOT appear in the layout. Only call `gather()` when you intend to pass the result to `set_layout()`.
         """
-        collected = []
+        specials = ['*all','*out','*ctrl','*repr']
+        Gs, Ws = self.__groups, self.__all_widgets
+    
+        # First collect all excluded names
+        exclude = set()  
+        for name in widgets:
+            if isinstance(name, str) and name.startswith('!'):
+                exp = name[1:]  # Remove '!' prefix
+                if not exp.strip():  # Handle empty exclusion patterns
+                    raise ValueError(f"Invalid exclusion pattern {name!r} - empty patterns not allowed")
+                if exp in specials:
+                    raise ValueError(f"Exclusion pattern {name!r} cannot be a special group name, use '!widget-name' or regex patterns prefixed with '!'.")
+                if exp in Ws:
+                    exclude.add(exp)  # Exact name exclusion
+                else:  # Regex exclusion pattern - check against all widget names
+                    try:
+                        exclude.update([wname for wname in Ws.keys() if re.fullmatch(exp, wname)])
+                    except re.error as e:
+                        raise ValueError(f"Invalid regex pattern in exclusion {name!r}: {e}")
+    
+        collected = [] # And collect included names keeping exluded out
         for name in widgets:
             if isinstance(name, str):
-                if name in self.__all_widgets:
-                    collected.append(self.__all_widgets[name])
-                    self.__app._used_names.add(name) # mark as used
+                if not name.strip():  # Handle empty strings and whitespace
+                    raise ValueError(f"Invalid widget name {name!r} - empty strings not allowed")
+                
+                if name.startswith('!'):
+                    continue  # Skip exclusion patterns, already processed above
+                elif name in Ws: # catch all names without regex first and exlcuded above
+                    if name not in exclude: # exact name inclusion
+                        collected.append(Ws[name])
+                elif name.startswith('*'): # special groups
+                    if name == '*all':
+                        collected.extend([Ws[k] for k in Ws.keys() if k not in exclude])
+                    elif name == '*out':
+                        collected.extend([Ws[n] for n in Gs.outputs if n not in exclude])
+                    elif name == '*ctrl':
+                        collected.extend([Ws[n] for n in Gs.controls if n not in exclude])
+                    elif name == '*repr':
+                        collected.extend([Ws[n] for n in Gs.others if n not in exclude])
+                    else:
+                        raise ValueError(f"Invalid special group name {name!r}, valid names are: {specials}")
                 else:
-                    raise ValueError(f"Invalid widget name {name!r}. Valid names are: {list(self.__all_widgets.keys())}")
+                    try:
+                        matches = [wname for wname in Ws.keys() if re.fullmatch(name, wname)]
+                        collected.extend([Ws[wname] for wname in matches if wname not in exclude])
+                    except re.error as e: # only raise error if regex is invalid, not if no matches found
+                        raise ValueError(
+                            f"Invalid widget name {name!r}.\n"
+                            f"Valid names: {list(Ws.keys())}\n"
+                            f"Special groups: {specials}\n"
+                            f"regex patterns to match full name in params/outputs are also supported.")
             elif isinstance(name, ipw.DOMWidget):
                 collected.append(name)
             else:
                 raise TypeError(f"Each item must be a string or DOMWidget, got {type(name).__name__}")
         return tuple(collected)
     
+    @_format_docs(gather = textwrap.indent(_docs['gather'], '        '))
     def set_layout(self, 
         header: 'list[str, DOMWidget] | DOMWidget' = None, 
         center: 'list[str, DOMWidget] | DOMWidget' = None, 
@@ -459,8 +527,10 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             - right_sidebar: Right side widgets  
             - footer: Bottom widgets
             - Each of above must be of type `list[str, DOMWidget] | DOMWidget` of widgets/ params names if given. 
-                - To get params/outputs by names at a nesting level, use `gather()` method, e.g. `center = TabsWidget(dash.gather('fig', 'out-stats'))`
                 - If a single widget is passed, it will be used directly, if a list/tuple is passed, it will be wrapped in a VBox (except center which uses GridBox).
+                {gather}
+                - If None, the area will be hidden.
+                - To get params/outputs by names at a nesting level, use `gather()` method, e.g. `center = TabsWidget(dash.gather('fig', 'out-stats'))`
         - Grid Properties:
             - pane_widths: list[str] - Widths for [left, center, right]
             - pane_heights: list[str] - Heights for [header, center, footer]
@@ -476,8 +546,8 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
 
         ```python
         dash.set_layout( # dash is an instance of DashboardBase
-            left_sidebar=dash.groups.controls,
-            center=['fig', *dash.groups.outputs],
+            left_sidebar=['*ctrl'],  # control widgets on left
+            center=['fig', '*out'], # fig and other outputs in center
             pane_widths=['200px', '1fr', 'auto'],
             pane_heights=['auto', '1fr', 'auto'],
             grid_gap='1rem'
@@ -505,11 +575,11 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                 self.__app.set_trait(key, value.add_class(key.replace('_','-'))) # for user CSS
             elif value: # class own traits and Layout properties are linked here
                 self.__app.set_trait(key, value)
-               
-        self.__other.children += tuple([v for k,v in self.__all_widgets.items() if k not in self.__app._used_names])
+                
         del layout_widgets # release references
-        self.__app._used_names.clear() # reset used names, will be filled again via gather internally
-
+        if names := _used_widgets(self.__app):
+            self.__other.children += tuple([v for k,v in self.__all_widgets.items() if k not in names])
+        
         # We are adding a reaonly isfullscreen trait set through button on parent class
         fs_btn = FullscreenButton()
         fs_btn.observe(lambda c: self.set_trait('isfullscreen',c.new), names='isfullscreen') # setting readonly property
@@ -573,11 +643,9 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         cent_sl = f"{main_sl} > .center"
         _css = _build_css(('.dl-dashboard > .dl-DashApp',),_general_css)
 
-        fs_css = main.pop(':fullscreen',{}) or main.pop('^:fullscreen',{}) # both valid
-        if fs_css: # fullscreen css given by user, full screen is top interact, not inside one as button is there
-            _css += ('\n' + _build_css((f".{self.__css_class}.widget-interact.dl-dashboard:fullscreen > .dl-DashApp",), fs_css))
-        
         if main:
+            if fs_css := main.pop(':fullscreen',{}) or main.pop('^:fullscreen',{}): # both valid
+                _css += ('\n' + _build_css((f".{self.__css_class}.widget-interact.dl-dashboard:fullscreen > .dl-DashApp",), fs_css))
             _css += ("\n" + _build_css((main_sl,), main))
         if center:
             _css += ("\n" + _build_css((cent_sl,), center))
@@ -731,6 +799,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             callbacks.append(new_func) 
             
             if out is not None:
+                self.__mark_instance(out._kwarg, out) 
                 outputs.append(out)
         
         self.__icallbacks = tuple(callbacks) # set back
@@ -793,15 +862,10 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                 w._hinting_btn_update = update_hint # keep reference to clean up before adding next time
                
     @property
-    def outputs(self) -> tuple: 
-        return tuple([w for _, w in self.__all_widgets.items() if isinstance(w, ipw.Output)])
+    def outputs(self) -> tuple: raise DeprecationWarning("outputs property is deprecated, use gather('*out') instead.")
 
     @property
-    def groups(self) -> namedtuple: 
-        """NamedTuple of widget groups: controls, outputs, others."""
-        if not hasattr(self, '_groups'):
-            self._groups = self.__create_groups(self.__all_widgets)
-        return self._groups
+    def groups(self) -> namedtuple: raise DeprecationWarning("groups property is deprecated, use gather('*ctrl'), gather('*out'), gather('*repr') instead to pick a group of widgets.")
     
     def __run_updates(self, **kwargs):
         with self.__user_ctx(), print_error():

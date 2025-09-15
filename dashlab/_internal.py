@@ -279,13 +279,14 @@ _general_css = {
         "75%": { "content": "'●●●●●'" }, "100%": { "content": "''" },
     },
     '< .dl-dashboard > .other-area:not(:empty)': { # to distinguish other area when not empty
-        'border-top': '1px inset var(--jp-border-color2, #8988)',
+        'border-top': '0.2px inset var(--jp-border-color2, #8988)',
     },
     '.widget-vslider, .jupyter-widget-vslider': {'width': 'auto'}, # otherwise it spans too much area
     '.content-width-button.jupyter-button, .content-width-button .jupyter-button': {
             'width':'max-content',
             'padding-left': '8px', 'padding-right': '8px',
     },
+    '.widget-gridbox, .jupyter-widget-gridbox': {'overflow': 'unset'}, # unexpected scrollbars in gridbox
     '> * .widget-box': {'flex-shrink': 0}, # avoid collapse of boxes,
     '.js-plotly-plot': {'flex-grow': 1}, # stretch parent, rest is autosize stuff
     '.columns':{

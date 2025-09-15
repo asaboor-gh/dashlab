@@ -2,10 +2,10 @@
     display: flex;
     flex-direction: column;
     overflow-y: auto; /* user can set max height, so allow this */
+    border-radius: 4px;
 }
 
 .list-widget:not(.tabs) {
-    border-radius: 4px;
     margin-block: 0.5em 0.5em;
 }
 
@@ -13,8 +13,6 @@
 .list-widget.tabs {
     flex-direction: row;
     margin-bottom: 0;
-    border-radius: 4px 4px 0 0;
-    border-bottom: 1px inset #8884;
     box-sizing: border-box;
 }
 
@@ -28,7 +26,6 @@
 .list-widget.tabs .list-item {
     flex: 0 1 auto;  /* don't grow, but shrink, and base of auto like browser tabs */
     min-width: 60px;  /* Minimum tab width for usability */
-    border-radius: 4px 4px 0 0;
     margin: 0 1px 0 0;  /* Reduced margin for tighter spacing */
     white-space: nowrap;
     text-align: center;  /* Center text in each tab */
@@ -44,7 +41,6 @@
 /* Selected tab styling */
 .list-widget.tabs .list-item.selected {
     border-bottom: 1px inset var(--accent-color, #8884);
-    border-radius: 4px 4px 0 0;
     border-left: none;
     font-weight: bold;
 }
@@ -98,9 +94,29 @@
     box-shadow: 0 0 1px inset #8884;
     font-weight: bold;
     border-radius: 4px;
-    border-left: 2px solid var(--accent-color, #8884);
+    border-left: 1px solid var(--accent-color, #8884);
 }
 
 .list-item:active {
     transform: scale(0.99);
+}
+
+/* Since TabsWidget does not inherit from AnyWidget, but has ListWidget there, we can use it for CSS */
+
+.tabs-widget .list-widget.tabs {
+    border-radius: 4px 4px 0 0;
+    border-bottom: 1px inset #8884;
+}
+
+.tabs-widget .list-widget.tabs .list-item:hover {
+    border-radius: 4px 4px 0 0;
+}
+
+.tabs-widget .list-item.selected {
+    border-radius: 4px 4px 0 0;
+}
+
+.tabs-widget .tabs-stack {
+    border-radius: 4px;
+    padding: 4px;
 }

@@ -138,7 +138,7 @@ class Dashboard(DashboardBase):
         print(x+5,y)
     
     # after adding callbacks, we can set CSS and layout to include all output widgets created
-    app.set_layout(left_sidebar=app.groups.controls,center=app.groups.outputs)
+    app.set_layout(left_sidebar=['*ctrl'],center=['*out'])
     
     app # at end of cell to display the app
     ```

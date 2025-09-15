@@ -8,8 +8,8 @@ function render({model, el}) {
     }
 
     function updateTabs() {
-        const tabs = model.get('tabs');
-        el.classList.toggle('tabs', Boolean(tabs));
+        const vert = model.get('vertical');
+        el.classList.toggle('tabs', Boolean(!vert));
     }
     
     function createItem(opt) {
@@ -62,7 +62,7 @@ function render({model, el}) {
     
     model.on('change:description', updateDescription);
     model.on('change:_options', updateList);
-    model.on('change:tabs', updateTabs);
+    model.on('change:vertical', updateTabs);
 
      // Intercept custom messages from the backend
     model.on('msg:custom', (msg) => {

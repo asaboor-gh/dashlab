@@ -34,7 +34,7 @@ class ListWidget(AnyWidget,ValueWidget):
     - `value`: Any, currently selected value. 
     - `transform`: Callable, function such that transform(item) -> str, for each item in options. Default is `repr`.
     - `html`: str, HTML representation of the currently selected item through transform.
-    - `tabs`: bool, if True, display as tabs instead of list. This alongwith `ipywidgets.Stack` can be used to create tabbed views like `dashlab.widgets.TabsWidget`.
+    - `vertical`: bool, if False, display as tabs instead of list. If you want to use as tabs, consider using `TabsWidget` instead.
 
     You can set `ListWidget.layout.max_height` to limit the maximum height (default 400px) of the list. The list will scroll if it exceeds this height.
     """
@@ -45,7 +45,7 @@ class ListWidget(AnyWidget,ValueWidget):
     options     = traitlets.List() # only on backend
     value       = traitlets.Any(None, allow_none=True,read_only=True) # only backend
     html        = traitlets.Unicode('',read_only=True, help="html = transform(value)")  # This is only python side
-    tabs        = traitlets.Bool(False,help="If True, display as tabs instead of list").tag(sync=True)
+    vertical    = traitlets.Bool(True,help="If False, display as tabs instead of list").tag(sync=True)
     
     _esm = Path(__file__).with_name('static') / 'listw.js'
     _css = Path(__file__).with_name('static') / 'listw.css'
@@ -136,13 +136,13 @@ class TabsWidget(GridBox):
     """
     titles = traitlets.List([], help="List of tab titles")
     selected_index = traitlets.Int(0, allow_none=True, help="Index of currently selected tab")
-    vertical = traitlets.Bool(False, help="If True, display tabs vertically on left")
     tabs_width = traitlets.Unicode('auto', help="width of tabs when vertical") # can be any valid css width
     tabs_height = traitlets.Unicode('2em', help="height of tabs when horizontal") # can be any valid css height
+    vertical = traitlets.Bool(False, help="If True, display tabs vertically on the left side")
     
     def __init__(self, children=None, titles=None, vertical=False, tabs_width='auto', tabs_height='2em', **kwargs):
-        self._lw = ListWidget(description=None)
-        self._stack = Stack()
+        self._lw = ListWidget(description=None, vertical=vertical)
+        self._stack = Stack().add_class('tabs-stack')
         self._init_titles = titles or [] # store initial titles as list even if no children yet
         super().__init__(**kwargs)
         self.add_class('tabs-widget') # for custom styling
@@ -152,11 +152,9 @@ class TabsWidget(GridBox):
         self.children = children or [] # set children to stack
         self.tabs_width = tabs_width
         self.tabs_height = tabs_height
-        self.vertical = vertical
         self._update_layout(None) # initial layout update
-        
-        traitlets.link((self,'vertical'),(self._lw,'tabs'), transform=(lambda v: not v, lambda v: not v)) 
         traitlets.link((self._lw,'index'),(self,'selected_index')) # on click, it should update selected_index
+        traitlets.link((self._lw,'vertical'),(self,'vertical')) # link vertical to listwidget
     
     @traitlets.observe('selected_index')
     def _validate_selected(self, change):
