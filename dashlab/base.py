@@ -420,7 +420,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                     raise type(e)(f"In {key!r} of layout: {e}") from e # better error message     
         return layout_widgets
     
-    def __unpack_group(self, pattern, groups):
+    def __unpack_group(self, pattern):
         group, excp = pattern.split('!',1) if '!' in pattern else (pattern, '')
         exclude = []
         if excp.strip(): # only try to exclude if excp is not empty or just whitespace
@@ -429,17 +429,10 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             except re.error as e:
                 raise ValueError(f"Invalid exclusion regex pattern {excp!r} in {pattern!r}.\n{e}") from e
         
-        if group == '*all':
-            return [k for k in self.__all_widgets if k not in exclude]
-        elif group == '*out':
-            return [n for n in self.__groups.outputs if n not in exclude]
-        elif group == '*ctrl':
-            return [n for n in self.__groups.controls if n not in exclude]
-        elif group == '*repr':
-            return [n for n in self.__groups.others if n not in exclude]
-        else:
-            raise ValueError(f"Invalid special group name {group!r}, valid names are: {groups} followed by optional '!name|regex...' exclusion")
-    
+        if not group in self.__groups:
+            raise ValueError(f"Invalid special group name {group!r}, valid names are: {list(self.__groups)} followed by optional '!name|regex...' exclusion")
+        return [name for name in self.__groups[group] if name not in exclude]
+
     @_format_docs(**_docs)
     def gather(self, *widgets: 'str | DOMWidget', verbose: bool=False) -> tuple[DOMWidget]:
         """Get list of widgets by names or general widgets for layout configuration.
@@ -477,7 +470,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
         # Shows: [gather (group)]: *all!debug.* → fig1,fig2,x,y,out-stats
         ```
         """
-        specials = ['*all','*out','*ctrl','*repr']
+        specials = list(self.__groups) # special group names
         Ws, LC = self.__all_widgets, [name.lower() for name in self.__all_widgets] # all widgets by name and lower case for case insensitive search
     
         collected = [] # And collect included names keeping exluded out
@@ -495,7 +488,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                 elif name.startswith('*'): # special groups
                     names = []
                     try:
-                        names = self.__unpack_group(name, specials)
+                        names = self.__unpack_group(name)
                         collected.extend([Ws[n] for n in names]) # already filtered above
                     finally:
                         if verbose:
@@ -855,7 +848,6 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             raise ValueError(f"Function {f.__name__!r} has parameters {extra_params} that are not defined in interactive params.")
         
     def __create_groups(self, widgets_dict):
-        groups = namedtuple('WidgetGropus', ['controls', 'outputs', 'others'])
         controls, outputs, others = [], [], []
         for key, widget in widgets_dict.items():
             if isinstance(widget, ipw.Output):
@@ -871,7 +863,7 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             widgets_dict[c].add_class('widget-param').add_class('widget-control') # similar to widget-output added by ipywidgets
         for o in others:
             widgets_dict[o].add_class('widget-param') # what else
-        return groups(controls=tuple(controls), outputs=tuple(outputs), others=tuple(others))
+        return {'*all': tuple(widgets_dict), '*ctrl': tuple(controls), '*out': tuple(outputs), '*repr': tuple(others)}
     
     def __hint_btns_update(self, func):
         func_params = {k:v for k,v in inspect.signature(func).parameters.items()}

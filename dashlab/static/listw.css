@@ -14,6 +14,9 @@
     flex-direction: row;
     margin-bottom: 0;
     box-sizing: border-box;
+    flex-wrap: wrap;
+    overflow-x: hidden;
+    padding-left: 4px;
 }
 
 .list-widget:hover .list-item {
@@ -106,6 +109,7 @@
 .tabs-widget .list-widget.tabs {
     border-radius: 4px 4px 0 0;
     border-bottom: 1px inset #8884;
+    padding-left: 0;
 }
 
 .tabs-widget .list-widget.tabs .list-item:hover {
