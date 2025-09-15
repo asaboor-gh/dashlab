@@ -185,14 +185,14 @@ _docs = {
     - Built-in fullscreen support
     """,
     "css_info": re.sub(r'\bcode(\[.*?\])?\`', '`', _build_css.__doc__, flags=re.DOTALL), # inline code` or code['css']` not supported is dashlab itself
-    "gather": """
-    - Name of widgets from params or output widgets from callbacks by their CSS class names (e.g. 'out-stats').
-    - Special group names: `*all`, `*out`, `*ctrl`, `*repr` for all widgets, outputs, controls, representation widgets respectively.
-    - Regex patterns to match full widget names (e.g. 'fig.*' to match 'fig1', 'fig2' etc.). Only raises error if regex is invalid, not if no matches found.
-    - Exclusion patterns with '!' prefix (e.g. '!widget-name', '!out-.*' to exclude specific widgets or regex patterns). 
-      This takes precedence over inclusion and can not be used with special group names, e.g. '!*out' is invalid.
-    - Direct DOMWidget instances can also be passed in any order to include external widgets not in params/outputs.
-    """
+    "gather": """        
+        - Name of widgets from params or output widgets from callbacks by their CSS class names (e.g. 'out-stats').
+        - Special group names: `*all`, `*out`, `*ctrl`, `*repr` for all widgets, outputs, controls, representation widgets respectively.
+          - Special groups support exclusion patterns with '!' suffix (e.g. '*all!debug.*', '*ctrl!btn.*' to exclude specific widgets or regex patterns from the group).
+          - Exclusion patterns can be exact names or regex patterns and are applied only to the widgets in the specified group.
+        - Regex patterns to match full widget names (e.g. 'fig.*' to match 'fig1', 'fig2' etc.). Only raises error if regex is invalid, not if no matches found.
+        - Direct DOMWidget instances can also be passed inside list in any order to include external widgets not in params/outputs.
+    """,
 }
 
 def _expose_widget(v):
@@ -420,47 +420,65 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                     raise type(e)(f"In {key!r} of layout: {e}") from e # better error message     
         return layout_widgets
     
+    def __unpack_group(self, pattern, groups):
+        group, excp = pattern.split('!',1) if '!' in pattern else (pattern, '')
+        exclude = []
+        if excp.strip(): # only try to exclude if excp is not empty or just whitespace
+            try:
+                exclude = [name for name in self.__all_widgets if re.fullmatch(excp, name)]
+            except re.error as e:
+                raise ValueError(f"Invalid exclusion regex pattern {excp!r} in {pattern!r}.\n{e}") from e
+        
+        if group == '*all':
+            return [k for k in self.__all_widgets if k not in exclude]
+        elif group == '*out':
+            return [n for n in self.__groups.outputs if n not in exclude]
+        elif group == '*ctrl':
+            return [n for n in self.__groups.controls if n not in exclude]
+        elif group == '*repr':
+            return [n for n in self.__groups.others if n not in exclude]
+        else:
+            raise ValueError(f"Invalid special group name {group!r}, valid names are: {groups} followed by optional '!name|regex...' exclusion")
+    
     @_format_docs(**_docs)
-    def gather(self, *widgets: 'str | DOMWidget') -> tuple[DOMWidget]:
+    def gather(self, *widgets: 'str | DOMWidget', verbose: bool=False) -> tuple[DOMWidget]:
         """Get list of widgets by names or general widgets for layout configuration.
         This can be used to collect widgets to embed at any nesting level in layout.
         
         **Parameters** (str | DOMWidget):         
         {gather}
-        **Returns**: List of DOMWidget instances corresponding to the provided names or instances.
+        Use `verbose=True` to print matched widgets for each pattern to ensure correct matching.
+        
+        **Returns**: List of DOMWidget instances corresponding to the provided names or instances.      
 
         **Example**:       
 
         ```python
-        # fig is a FigureWidget param, out-stats is a callback output
-        app.set_layout(
-            left_sidebar = ['x','y'], # or dash.gather('x','y') is same, or if only two controls x,y then *ctrl works too
-            center = app.TabsWidget(
-                app.gether('fig', ipw.HTML('Showing Stats'), 'out-stats')
-            ) # Not possible to pass names list directly inside a nested widget container, so use gather in nesting levels
-        ) # app is instance of DashboardBase
-        # Placed (FigureWidget, HTML, Output) at, can be used in set_layout
+        # Basic usage
+        widgets = dash.gather('fig1', 'fig2', 'out-stats')
+
+        # Special groups
+        all_controls = dash.gather('*ctrl')
+        all_outputs = dash.gather('*out')
+
+        # Groups with exclusions
+        controls_no_buttons = dash.gather('*ctrl!btn.*')
+        all_except_debug = dash.gather('*all!.*debug.*')
+
+        # Regex patterns
+        fig_widgets = dash.gather('fig.*')  # fig1, fig2, fig_debug
+        numbered = dash.gather('.*[0-9].*')  # any widget with numbers at end
+
+        # Mixed patterns
+        result = dash.gather('fig1', '*ctrl!btn.*', external_widget)
+
+        # Verbose output with colors
+        widgets = dash.gather('*all!debug.*', verbose=True)
+        # Shows: [gather (group)]: *all!debug.* → fig1,fig2,x,y,out-stats
         ```
         """
         specials = ['*all','*out','*ctrl','*repr']
-        Gs, Ws = self.__groups, self.__all_widgets
-    
-        # First collect all excluded names
-        exclude = set()  
-        for name in widgets:
-            if isinstance(name, str) and name.startswith('!'):
-                exp = name[1:]  # Remove '!' prefix
-                if not exp.strip():  # Handle empty exclusion patterns
-                    raise ValueError(f"Invalid exclusion pattern {name!r} - empty patterns not allowed")
-                if exp in specials:
-                    raise ValueError(f"Exclusion pattern {name!r} cannot be a special group name, use '!widget-name' or regex patterns prefixed with '!'.")
-                if exp in Ws:
-                    exclude.add(exp)  # Exact name exclusion
-                else:  # Regex exclusion pattern - check against all widget names
-                    try:
-                        exclude.update([wname for wname in Ws.keys() if re.fullmatch(exp, wname)])
-                    except re.error as e:
-                        raise ValueError(f"Invalid regex pattern in exclusion {name!r}: {e}")
+        Ws, LC = self.__all_widgets, [name.lower() for name in self.__all_widgets] # all widgets by name and lower case for case insensitive search
     
         collected = [] # And collect included names keeping exluded out
         for name in widgets:
@@ -468,39 +486,47 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
                 if not name.strip():  # Handle empty strings and whitespace
                     raise ValueError(f"Invalid widget name {name!r} - empty strings not allowed")
                 
-                if name.startswith('!'):
-                    continue  # Skip exclusion patterns, already processed above
-                elif name in Ws: # catch all names without regex first and exlcuded above
-                    if name not in exclude: # exact name inclusion
-                        collected.append(Ws[name])
+                if name in Ws: # catch all names without regex first and exlcuded above
+                    collected.append(Ws[name])
+                    if verbose:
+                        print(f"\033[92m[gather (exact)]\033[0m: {name} → {name}")
+                elif name.lower() in LC: # case insensitive match
+                    raise ValueError(f"Widget name {name!r} not found, did you mean {list(Ws)[LC.index(name.lower())]!r}? Widget names are case-sensitive.")
                 elif name.startswith('*'): # special groups
-                    if name == '*all':
-                        collected.extend([Ws[k] for k in Ws.keys() if k not in exclude])
-                    elif name == '*out':
-                        collected.extend([Ws[n] for n in Gs.outputs if n not in exclude])
-                    elif name == '*ctrl':
-                        collected.extend([Ws[n] for n in Gs.controls if n not in exclude])
-                    elif name == '*repr':
-                        collected.extend([Ws[n] for n in Gs.others if n not in exclude])
-                    else:
-                        raise ValueError(f"Invalid special group name {name!r}, valid names are: {specials}")
+                    names = []
+                    try:
+                        names = self.__unpack_group(name, specials)
+                        collected.extend([Ws[n] for n in names]) # already filtered above
+                    finally:
+                        if verbose:
+                            print(f"\033[94m[gather (group)]\033[0m: {name} → {','.join(names) if names else 'No matches'}")
                 else:
+                    matches = []
                     try:
                         matches = [wname for wname in Ws.keys() if re.fullmatch(name, wname)]
-                        collected.extend([Ws[wname] for wname in matches if wname not in exclude])
+                        if matches:
+                            collected.extend([Ws[wname] for wname in matches])
+                        elif name.isidentifier(): # if simple name, raise error
+                            raise ValueError(f"Invalid widget name {name!r}. Valid names: {list(Ws.keys())}, specials: {specials}")
                     except re.error as e: # only raise error if regex is invalid, not if no matches found
                         raise ValueError(
                             f"Invalid widget name {name!r}.\n"
                             f"Valid names: {list(Ws.keys())}\n"
-                            f"Special groups: {specials}\n"
-                            f"regex patterns to match full name in params/outputs are also supported.")
+                            f"Special groups: {specials}, optionally followed by exclusion '!name|regex...'\n"
+                            f"regex patterns to match full name in params/outputs are also supported.\n{e}")
+                    finally:
+                        if verbose:
+                            print(f"\033[93m[gather (regex)]\033[0m: {name} → {','.join(matches) if matches else 'No matches'}")
+                        
             elif isinstance(name, ipw.DOMWidget):
                 collected.append(name)
+                if verbose:
+                    print(f"\033[95m[gather (widget)]\033[0m: {type(name).__name__} → Direct widget")
             else:
                 raise TypeError(f"Each item must be a string or DOMWidget, got {type(name).__name__}")
         return tuple(collected)
     
-    @_format_docs(gather = textwrap.indent(_docs['gather'], '        '))
+    @_format_docs(gather = textwrap.indent(_docs['gather'], '    '))
     def set_layout(self, 
         header: 'list[str, DOMWidget] | DOMWidget' = None, 
         center: 'list[str, DOMWidget] | DOMWidget' = None, 
@@ -520,17 +546,19 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
 
         **Parameters**:  
 
-        - Content Areas (list/tuple of widget names):
+        - Content Areas (list[str, DOMWidget] | DOMWidget):
             - header: Widgets at top
             - center: Main content area (uses CSS Grid)
             - left_sidebar: Left side widgets
             - right_sidebar: Right side widgets  
             - footer: Bottom widgets
-            - Each of above must be of type `list[str, DOMWidget] | DOMWidget` of widgets/ params names if given. 
-                - If a single widget is passed, it will be used directly, if a list/tuple is passed, it will be wrapped in a VBox (except center which uses GridBox).
-                {gather}
-                - If None, the area will be hidden.
-                - To get params/outputs by names at a nesting level, use `gather()` method, e.g. `center = TabsWidget(dash.gather('fig', 'out-stats'))`
+        
+        Each of content areas expect `list[str, DOMWidget] | DOMWidget` of widgets/ params names if given. See details below:
+        
+        - If a single widget is passed, it will be used directly. If None, the area will be hidden.
+        - To get params/outputs by names at a nesting level, use `gather()` method, e.g. `center = TabsWidget(dash.gather('fig', 'out-stats'))`
+        - If a list/tuple is passed, it will be wrapped in a VBox (except center which uses GridBox).{gather}
+        
         - Grid Properties:
             - pane_widths: list[str] - Widths for [left, center, right]
             - pane_heights: list[str] - Heights for [header, center, footer]
