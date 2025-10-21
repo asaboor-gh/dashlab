@@ -132,10 +132,10 @@ def _build_css(selector, props):
             content += f"{key} {{\n\t"
             content += _build_css(selector, value).replace('\n','\n\t').rstrip('\t') # last tab is bad
             content += "}\n"
-        elif key.startswith('@'): # Page, @keyframes etc.
-            content += f"{key} {{\n\t"
-            content += _build_css((), value).replace('\n','\n\t').rstrip('\t')
-            content += "}\n"
+        elif key.startswith('@'): # @page, @keyframes etc.
+            content += f"{key} " # braces added by _build_css below, no extra needed
+            content += _build_css((), value).strip(' \n\t\r') # strip both sides here to take brace at previous line
+            content += "\n"
         elif  key.startswith(':root'): # This is fine
             content+= _build_css((key,), value)
         else:
