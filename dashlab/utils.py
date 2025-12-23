@@ -103,7 +103,8 @@ def _build_css(selector, props):
     - All nested selectors are joined with space, so code`'.A': {'.B': ... }` becomes code['css']`.A .B {...}` in CSS.
     - A '^' in start of a selector joins to parent selector without space, so code`'.A': {'^:hover': ...}` becomes code['css']`.A:hover {...}` in CSS. You can also use code`'.A:hover'` directly but it will restrict other nested keys to hover only.
     - A list/tuple of values for a key in dict generates CSS fallback, so code`'.A': {'font-size': ('20px','2em')}` becomes code['css']`.A {font-size: 20px; font-size: 2em;}` in CSS.
-    - An empty key with a string value injects direct CSS wrapped in code['css']`@scope`, so code`'.A': {'': 'raw css here'}` becomes code['css']`@scope (.A) { raw css here }` in CSS. This can be used to inject complex CSS like `@import`, `@font-face`, `@layer` etc.
+    - An empty key with a string value injects direct CSS wrapped in code['css']`@scope`, so code`'.A': {'': 'raw css here'}` becomes code['css']`@scope (.A) { raw css here }` in CSS. 
+      This can be used to inject complex CSS like `@import`, `@font-face`, `@layer` etc. `:root` is replaced with `:scope` to make variables local to the selector.
 
     Read about specificity of CSS selectors [here](https://developer.mozilla.org/en-US/docs/Web/CSS/Specificity).
     """
@@ -116,6 +117,7 @@ def _build_css(selector, props):
         key = _validate_key(key) # Just validate key
         if not key.strip() and isinstance(value, str): # Empty key with string value is direct CSS
             value = '\n'.join(line.strip() for line in value.splitlines()) # Clean extra spaces
+            value = value.replace(':root',':scope') # Take external root to scope
             content += ("@scope (" + " ".join(selector) + ") {\n")
             content += (textwrap.indent(value, '\t')+ "\n}\n") 
             continue
