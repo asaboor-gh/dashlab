@@ -22,6 +22,7 @@ from .utils import print_error, disabled, _build_css, _fix_init_sig, _format_doc
 
 # Us
 _user_ctx = nullcontext # this can be set from external packages like ipyslides will set one
+_this_klass = '' # for external used in ipyslides  to detect current class where function is running
         
 _running_callbacks = set()  # Global set to track currently running callbacks
 
@@ -892,7 +893,8 @@ class DashboardBase(ipw.interactive, metaclass = _metaclass):
             _run_callbacks(self.__icallbacks, kwargs, self) 
     
     def __user_ctx(self):
-        global _user_ctx
+        global _user_ctx, _this_klass
+        _this_klass = "." + ".".join(self._dom_classes) # for context manager use outside
         try:
             with _user_ctx(): pass # test if it works
         except Exception as e:
