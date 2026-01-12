@@ -156,7 +156,11 @@ def _build_css(selector, props):
             content += f"{key} {{\n\t"
             content += _build_css(selector, value).replace('\n','\n\t').rstrip('\t') # last tab is bad
             content += "}\n"
-        elif key.startswith('@'): # @page, @keyframes etc.
+        elif key.startswith('@keyframes'): # handle keyframes specially
+            content += f"{key} {{\n"
+            inner = _build_css((), value).strip('\n')  # build inner from/to/percent blocks
+            content += textwrap.indent(inner, '\t') + "\n}\n"
+        elif key.startswith('@'): # @page etc.
             content += f"{key} " # braces added by _build_css below, no extra needed
             content += _build_css((), value).strip(' \n\t\r') # strip both sides here to take brace at previous line
             content += "\n"

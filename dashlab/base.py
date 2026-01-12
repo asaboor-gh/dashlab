@@ -158,7 +158,7 @@ _docs = {
     "callbacks": """
     - Methods decorated with `@callback`. Run in the order of definition.
     - Optional CSS class via `@callback('out-myclass')`
-    - Decorate with @monitor to check execution time, kwargs etc.
+    - Decorate with `@monitor` to check execution time, kwargs etc.
     - CSS class must start with 'out-' excpet reserved 'out-main'
     - Each callback gets only needed parameters and updates happen only when relevant parameters change
     - Callbacks cannot call themselves recursively to prevent infinite loops
