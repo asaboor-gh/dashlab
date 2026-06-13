@@ -1,5 +1,7 @@
-import time
+import time, os
 import traitlets
+import asyncio
+from contextlib import contextmanager
 
 from pathlib import Path
 from ipywidgets import ValueWidget, GridBox, Stack
@@ -8,7 +10,7 @@ from anywidget import AnyWidget
 from html import escape
 from . import utils
 
-__all__ = ['FullscreenButton', 'ListWidget', 'AnimationSlider', 'JupyTimer']
+__all__ = ['FullscreenButton', 'ListWidget', 'FileWatcher', 'AnimationSlider', 'JupyTimer']
 
 class FullscreenButton(AnyWidget):
     """A button widget that toggles fullscreen mode for its parent element.
@@ -188,8 +190,181 @@ class TabsWidget(GridBox):
     @traitlets.validate('titles')
     def _validate_titles(self, proposal):
         return self._reset_titles(proposal['value'])
-        
+    
+class AsyncTicker(traitlets.HasTraits):
+    """A minimal, high-speed internal ticker with interval in millisocnds.
+    
+    Provides an explicit .lock() context manager method to pause background 
+    ticks safely, using standard `running`, `start()`, and `stop()` lifecycle semantics.
+    """
+    interval = traitlets.Float(500.0) # Milliseconds
+    running = traitlets.Bool(False)
 
+    def __init__(self, callback, **kwargs):
+        super().__init__(**kwargs)
+        if not callable(callback):
+            raise TypeError("AsyncTicker requires a direct, callable function pointer.")
+        
+        self._callback = callback
+        self._task = None
+        self._executing = False # Guards against inner tick/lock execution overlap
+        
+        self.observe(self._handle_lifecycle, names='running')
+
+    @contextmanager
+    def lock(self):
+        """Explicit context manager method to lock the ticker execution state."""
+        was_executing = self._executing
+        self._executing = True
+        try:
+            yield self
+        finally:
+            self._executing = was_executing
+
+    async def _run_loop(self):
+        try:
+            while self.running:
+                await asyncio.sleep(self.interval / 1000.0)
+                
+                # Skips smoothly if a long callback execution or an external context holds the lock
+                if not self._executing:
+                    try:
+                        self._executing = True
+                        self._callback()
+                    finally:
+                        self._executing = False
+        except asyncio.CancelledError:
+            pass
+
+    def _handle_lifecycle(self, change):
+        if self._task and not self._task.done():
+            self._task.cancel()
+            self._task = None
+        if change['new']:
+            self._task = asyncio.get_event_loop().create_task(self._run_loop())
+
+    def start(self): self.running = True
+    def stop(self):  self.running = False
+
+
+class FileWatcher(AnyWidget):
+    """A visual, theme-neutral filesystem sentinel. Needs to be displayed in the notebook to work.
+    
+    Exposes an explicit .lock() context manager, a fluent @on_update decorator, 
+    and short .start() / .stop() manual lifecycle routines.
+    
+    ``interval`` is in milliseconds, and updates are not triggered while the lock is held 
+    or during callback execution, ensuring safe integration with any user code.
+    
+    ``assets`` is a list of additional file paths to watch alongside the main ``path``. The widget will trigger 
+    an update if any of these files change, and the update payload will include aggregate metadata 
+    (total size and latest modification time) for the entire set of watched files.
+    """
+    
+    _esm = Path(__file__).with_name('static') / 'filewatcher.js'
+
+    # Output widget trigger communications
+    _ping = traitlets.Dict({}).tag(sync=True)
+    _pong = traitlets.Bool(False).tag(sync=True)
+    
+    interval = traitlets.Float(500.0).tag(sync=True)
+    running = traitlets.Bool(True).tag(sync=True)
+    
+    # List of peripheral dependencies strictly typed as strings
+    assets = traitlets.List(traitlets.Unicode(), default_value=[]).tag(sync=True)
+
+    def __init__(self, file_path, interval=500, assets=None, **kwargs):
+        super().__init__(**kwargs)
+        self.path = Path(file_path).absolute()
+        self.interval = float(interval)
+        self._user_callback = None 
+        
+        # Track the entire cluster state with a single max timestamp number
+        self._last_max_mtime = 0.0
+        
+        if assets:
+            self.assets = [str(Path(p).absolute()) for p in assets]
+        
+        # Instantiate internal metronome with our local checking pointer
+        self._ticker = AsyncTicker(interval=self.interval, callback=self._check_file_system)
+        
+        # Internal configuration bindings
+        self.observe(self._sync_interval, names='interval')
+        self.observe(self._sync_lifecycle, names='running')
+        self.observe(self._on_context_ready, names='_pong')
+        self.observe(self._reset_mtime_tracker, names='assets')
+        
+        # Execute baseline scan and launch tracking state
+        self._check_file_system()
+        self._sync_lifecycle({"new": self.running})
+
+    def on_update(self, func):
+        """Decorator to register the file change handler."""
+        self._user_callback = func
+        return func
+
+    def lock(self):
+        """Context manager to temporarily halt background executions."""
+        return self._ticker.lock()
+
+    def _sync_interval(self, change):
+        self._ticker.interval = change['new']
+
+    def _sync_lifecycle(self, change):
+        """Passes the running state straight down to the ticker core."""
+        self._ticker.running = change['new']
+
+    def _reset_mtime_tracker(self, change):
+        """Forces immediate re-evaluation if the asset array configuration is modified."""
+        self._last_max_mtime = 0.0
+
+    def _check_file_system(self):
+        """Pure OS-level metadata scan. Evaluates the cluster state based on max mtime."""
+        targets = {self.path} | {Path(p).absolute() for p in self.assets}
+        
+        current_max_mtime = 0.0
+        total_size_bytes = 0
+
+        for target_path in targets:
+            if target_path.exists():
+                try:
+                    stat_info = os.stat(target_path)
+                    total_size_bytes += stat_info.st_size
+                    
+                    # Track the maximum modification time across the entire target pool
+                    if stat_info.st_mtime > current_max_mtime:
+                        current_max_mtime = stat_info.st_mtime
+                except OSError:
+                    pass
+
+        # If the maximum timestamp jumps forward, a file somewhere was edited
+        if current_max_mtime > self._last_max_mtime:
+            self._last_max_mtime = current_max_mtime
+            
+            self._ping = {
+                "path": str(self.path),
+                "size": f"{total_size_bytes / 1024.0:.1f} KB (Total)",
+                "mtime": time.strftime('%H:%M:%S', time.localtime(current_max_mtime)) if current_max_mtime else '—'
+            }
+
+    def _on_context_ready(self, change):
+        """Executes inside the browser frame context, preserving cell output streams."""
+        if self._user_callback:
+            with self.lock(): # Automatically pause background ticks while user code is actively running
+                try:
+                    self._user_callback(self.path)
+                except RuntimeError as e:
+                    print(f"Error in user callback: {e}")
+
+    def start(self): 
+        """Start running the file watcher."""
+        self.running = True
+        
+    def stop(self):  
+        """Stop running the file watcher."""
+        self.running = False
+        
+        
 @utils._fix_trait_sig
 class AnimationSlider(AnyWidget, ValueWidget):
     """This is a simple slider widget that can be used to control the animation with an observer function.
