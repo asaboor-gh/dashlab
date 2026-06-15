@@ -258,7 +258,7 @@ class FileWatcher(AnyWidget):
     
     ``assets`` is a list of additional file paths to watch alongside the main ``path``. The widget will trigger 
     an update if any of these files change, and the update payload will include aggregate metadata 
-    (total size and latest modification time) for the entire set of watched files.
+    (the latest modification time) for the entire set of watched files.
     """
     
     _esm = Path(__file__).with_name('static') / 'filewatcher.js'
@@ -275,8 +275,8 @@ class FileWatcher(AnyWidget):
 
     def __init__(self, file_path, interval=500, assets=None, **kwargs):
         super().__init__(**kwargs)
-        self.path = Path(file_path).absolute()
         self.interval = float(interval)
+        self._path = Path(file_path).absolute()
         self._user_callback = None 
         
         # Track the entire cluster state with a single max timestamp number
@@ -297,6 +297,11 @@ class FileWatcher(AnyWidget):
         # Execute baseline scan and launch tracking state
         self._check_file_system()
         self._sync_lifecycle({"new": self.running})
+    
+    @property
+    def path(self):
+        "Main file being watched by the FileWatcher instance."
+        return Path(self._path) # make sure path
 
     def on_update(self, func):
         """Decorator to register the file change handler."""
@@ -320,18 +325,24 @@ class FileWatcher(AnyWidget):
 
     def _check_file_system(self):
         """Pure OS-level metadata scan. Evaluates the cluster state based on max mtime."""
+        if not self.path.exists():
+            self._ping = {
+                "path": self.path.name, # short name only
+                "exists": False,
+                "mtime": '-'
+            }
+            self._reset_mtime_tracker(None) # reset for next evaluation, otherwise it does not respond
+            return  # exit early if the main file does not exist
+        
         targets = {self.path} | {Path(p).absolute() for p in self.assets}
         
         current_max_mtime = 0.0
-        total_size_bytes = 0
 
         for target_path in targets:
             if target_path.exists():
                 try:
-                    stat_info = os.stat(target_path)
-                    total_size_bytes += stat_info.st_size
-                    
                     # Track the maximum modification time across the entire target pool
+                    stat_info = os.stat(target_path)
                     if stat_info.st_mtime > current_max_mtime:
                         current_max_mtime = stat_info.st_mtime
                 except OSError:
@@ -342,8 +353,8 @@ class FileWatcher(AnyWidget):
             self._last_max_mtime = current_max_mtime
             
             self._ping = {
-                "path": str(self.path),
-                "size": f"{total_size_bytes / 1024.0:.1f} KB (Total)",
+                "path": self.path.name, # short name
+                "exists": True,
                 "mtime": time.strftime('%H:%M:%S', time.localtime(current_max_mtime)) if current_max_mtime else '—'
             }
 

@@ -3,9 +3,6 @@ export function render({ model, el }) {
     
     // Neutral Container Layout (Adapts dynamically to Light/Dark notebook themes)
     const container = document.createElement("div");
-    container.style.display = "flex";
-    container.style.justifyContent = "space-between";
-    container.style.alignItems = "center";
     container.style.padding = "6px 12px";
     container.style.border = "1px solid rgba(128, 128, 128, 0.2)";
     container.style.borderRadius = "4px";
@@ -15,7 +12,7 @@ export function render({ model, el }) {
     // Text Information Grid
     const infoDiv = document.createElement("div");
     infoDiv.style.display = "flex";
-    infoDiv.style.gap = "16px";
+    infoDiv.style.gap = "8px";
     infoDiv.style.flexWrap = "wrap";
     infoDiv.style.opacity = "0.8";
     
@@ -23,13 +20,9 @@ export function render({ model, el }) {
     statusSpan.style.fontWeight = "bold";
     
     const pathSpan = document.createElement("span");
-    const sizeSpan = document.createElement("span");
-    const mtimeSpan = document.createElement("span");
     
     infoDiv.appendChild(statusSpan);
     infoDiv.appendChild(pathSpan);
-    infoDiv.appendChild(sizeSpan);
-    infoDiv.appendChild(mtimeSpan);
     container.appendChild(infoDiv);
     
     // Minimal Neutral Action Toggle Button
@@ -39,20 +32,22 @@ export function render({ model, el }) {
     btn.style.color = "currentColor";
     btn.style.borderRadius = "3px";
     btn.style.padding = "2px 8px";
+    btn.style.marginTop = "8px";
     btn.style.cursor = "pointer";
     btn.style.fontSize = "11px";
     btn.style.fontFamily = "monospace";
     container.appendChild(btn);
     el.appendChild(container);
+
     function updateUI() {
         const meta = model.get("_ping") || {};
         const isRunning = model.get("running");
         
         // Extract and display only the direct file name, removing absolute root paths
-        pathSpan.textContent = `Main: ${meta.path ? meta.path.split('/').pop() : '—'}`;
-        sizeSpan.textContent = `Size: ${meta.size || '—'}`;
-        mtimeSpan.textContent = `Saved: ${meta.mtime || '—'}`;
-        
+        pathSpan.innerHTML = `
+            ${meta.exists === false ? '⛓️‍💥 <span style="color: rgba(240, 0, 22, 0.7);">[not found]</span>' : '🔗'} 
+            ${meta.path ? meta.path : '—'} 
+            🕝 ${meta.mtime || '—'}`;
         if (isRunning) {
             statusSpan.textContent = "[● Watcher Active]";
             statusSpan.style.color = "inherit";
