@@ -2,6 +2,7 @@ import time, os
 import traitlets
 import asyncio
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 from pathlib import Path
 from ipywidgets import ValueWidget, GridBox, Stack
@@ -245,13 +246,31 @@ class AsyncTicker(traitlets.HasTraits):
 
     def start(self): self.running = True
     def stop(self):  self.running = False
+    
+@dataclass(frozen=True)
+class WatcherState:
+    """Represents the state of a watched file, including the main file path, 
+    the dependent file path that may trigger changes, and the last modification time of the modified path (mpath)."""
+    path: Path # main file being watched
+    mpath: Path # main/dependency file may triggered the change 
+    mtime: float # last modification time of the mpath
+    
+    @classmethod
+    def from_paths(cls, path, mpath):
+        path, mpath = Path(path).absolute(), Path(mpath).absolute() # ensure absolute paths
+        return cls(path=Path(path).absolute(), mpath=Path(mpath).absolute(), mtime=mpath.stat().st_mtime)
 
-
-class FileWatcher(AnyWidget):
+class FileWatcher(AnyWidget, ValueWidget):
     """A visual, theme-neutral filesystem sentinel. Needs to be displayed in the notebook to work.
     
-    Exposes an explicit .lock() context manager, a fluent @on_update decorator, 
+    Exposes an explicit .lock() context manager, 
     and short .start() / .stop() manual lifecycle routines.
+    
+    You can use `file_watcher.observe(callback, "value")` to observe changes in file and asstes.
+    The `change["new"]` attribute in `callback(change)` contains the new `WatcherState` instance, has `path`, 'mpath', and `mtime` attributes, 
+    representing the main file path, the dependent file path that may trigger changes, and the last modification time of the modified path, respectively.
+    In a `dashlab.Dashboard`'s parameters, the callbacks receive the `WatcherState` instance directly as the new value.
+    You need to make sure to check if the observed value is None, as a deleted file will result in invalid watcher state.
     
     ``interval`` is in milliseconds, and updates are not triggered while the lock is held 
     or during callback execution, ensuring safe integration with any user code.
@@ -259,6 +278,18 @@ class FileWatcher(AnyWidget):
     ``assets`` is a list of additional file paths to watch alongside the main ``path``. The widget will trigger 
     an update if any of these files change, and the update payload will include aggregate metadata 
     (the latest modification time) for the entire set of watched files.
+    
+    ```python
+    fw = FileWatcher("path/to/file")  # replace with the actual file path
+    
+    def on_file_change(change):
+        value = change["new"]
+        if value and hasattr(value, 'mpath'): # robust check
+            print(f"Main file: {value.path}, Changed File: {value.mpath}, Modification Time: {value.mtime}")
+    
+    fw.observe(on_file_change, "value")
+    display(fw) # must to have javascript handshake to detect changes
+    ```
     """
     
     _esm = Path(__file__).with_name('static') / 'filewatcher.js'
@@ -267,6 +298,7 @@ class FileWatcher(AnyWidget):
     _ping = traitlets.Dict({}).tag(sync=True)
     _pong = traitlets.Bool(False).tag(sync=True)
     
+    value = traitlets.Instance(WatcherState, allow_none=True,read_only=True)
     interval = traitlets.Float(500.0).tag(sync=True)
     running = traitlets.Bool(True).tag(sync=True)
     
@@ -276,11 +308,11 @@ class FileWatcher(AnyWidget):
     def __init__(self, file_path, interval=500, assets=None, **kwargs):
         super().__init__(**kwargs)
         self.interval = float(interval)
-        self._path = Path(file_path).absolute()
-        self._user_callback = None 
+        self.__path = Path(file_path).absolute()
+        self.set_trait("value", WatcherState.from_paths(self.__path, self.__path)) # initial state
         
-        # Track the entire cluster state with a single max timestamp number
-        self._last_max_mtime = 0.0
+        # Track the entire cluster state
+        self._last_state = None
         
         if assets:
             self.assets = [str(Path(p).absolute()) for p in assets]
@@ -292,21 +324,11 @@ class FileWatcher(AnyWidget):
         self.observe(self._sync_interval, names='interval')
         self.observe(self._sync_lifecycle, names='running')
         self.observe(self._on_context_ready, names='_pong')
-        self.observe(self._reset_mtime_tracker, names='assets')
+        self.observe(self._reset_state, names='assets')
         
         # Execute baseline scan and launch tracking state
         self._check_file_system()
         self._sync_lifecycle({"new": self.running})
-    
-    @property
-    def path(self):
-        "Main file being watched by the FileWatcher instance."
-        return Path(self._path) # make sure path
-
-    def on_update(self, func):
-        """Decorator to register the file change handler."""
-        self._user_callback = func
-        return func
 
     def lock(self):
         """Context manager to temporarily halt background executions."""
@@ -319,53 +341,43 @@ class FileWatcher(AnyWidget):
         """Passes the running state straight down to the ticker core."""
         self._ticker.running = change['new']
 
-    def _reset_mtime_tracker(self, change):
+    def _reset_state(self, change):
         """Forces immediate re-evaluation if the asset array configuration is modified."""
-        self._last_max_mtime = 0.0
+        self._last_state = None
 
     def _check_file_system(self):
         """Pure OS-level metadata scan. Evaluates the cluster state based on max mtime."""
-        if not self.path.exists():
+        if not self.__path.exists():
             self._ping = {
-                "path": self.path.name, # short name only
+                "path": self.__path.name, # short name only
                 "exists": False,
                 "mtime": '-'
             }
-            self._reset_mtime_tracker(None) # reset for next evaluation, otherwise it does not respond
+            self._reset_state(None) # reset for next evaluation, otherwise it does not respond
             return  # exit early if the main file does not exist
         
-        targets = {self.path} | {Path(p).absolute() for p in self.assets}
-        
-        current_max_mtime = 0.0
+        targets = {self.__path} | {Path(p).absolute() for p in self.assets}
+        current_state = None
 
+        # Track the modification across the entire target pool
         for target_path in targets:
             if target_path.exists():
                 try:
-                    # Track the maximum modification time across the entire target pool
-                    stat_info = os.stat(target_path)
-                    if stat_info.st_mtime > current_max_mtime:
-                        current_max_mtime = stat_info.st_mtime
+                    current_state = WatcherState.from_paths(self.__path, target_path)
                 except OSError:
                     pass
 
-        # If the maximum timestamp jumps forward, a file somewhere was edited
-        if current_max_mtime > self._last_max_mtime:
-            self._last_max_mtime = current_max_mtime
-            
+        if current_state is not None and current_state != self._last_state:
+            self._last_state = current_state
             self._ping = {
-                "path": self.path.name, # short name
+                "path": self.__path.name, # short name
                 "exists": True,
-                "mtime": time.strftime('%H:%M:%S', time.localtime(current_max_mtime)) if current_max_mtime else '—'
+                "mtime": time.strftime('%H:%M:%S', time.localtime(current_state.mtime)) if current_state else '—'
             }
 
     def _on_context_ready(self, change):
         """Executes inside the browser frame context, preserving cell output streams."""
-        if self._user_callback:
-            with self.lock(): # Automatically pause background ticks while user code is actively running
-                try:
-                    self._user_callback(self.path)
-                except RuntimeError as e:
-                    print(f"Error in user callback: {e}")
+        self.set_trait("value", self._last_state) # after js interaction, otherwise Output widget does not get updated
 
     def start(self): 
         """Start running the file watcher."""
