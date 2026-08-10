@@ -248,6 +248,7 @@ _general_css = {
         'padding': '0 8px',
         'color': 'red !important',
     },
+    '.jupyter-widgets.widget-html': {'width': '100%'}, # avoid collpase in stacked layout
     '.out-*': {
         'padding': '4px 8px',
         'display': 'grid', # outputs are not displaying correctly otherwise

@@ -33,6 +33,6 @@ from .base import DashboardBase, callback
 from .core import Dashboard, interactive, interact, markdown, hstack, vstack
 from .utils import print_error, disabled
 from .patches import patched_plotly
-from .widgets import FullscreenButton, AnimationSlider, FileWatcher, ListWidget, TabsWidget, JupyTimer
+from .widgets import FullscreenButton, AnimationSlider, StepSlider, FileWatcher, ListWidget, TabsWidget, JupyTimer
 
 

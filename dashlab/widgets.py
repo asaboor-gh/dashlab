@@ -602,4 +602,33 @@ class JupyTimer(traitlets.HasTraits):
     
     def busy(self) -> bool: 
         "not self.idle()"
-        return not self.idle
+        return not self.idle()
+    
+
+@utils._fix_trait_sig
+class StepSlider(AnyWidget, ValueWidget):
+    """A step slider widget that allows you to select a value from a range of discrete steps.
+    value is an integer in the range [1, nsteps]. You can set the number of steps, the interval 
+    for automatic playback (when you click on the label), and whether the slider is vertical or horizontal.
+    """
+    _esm = Path(__file__).with_name('static') / 'stepw.js'
+    _css = Path(__file__).with_name('static') / 'stepw.css'
+    
+    # We do not need description here, keep as minimial dots
+    nsteps = traitlets.Int(5).tag(sync=True)
+    value = traitlets.Int(1).tag(sync=True)
+    playing = traitlets.Bool(False).tag(sync=True)
+    interval = traitlets.Int(1500).tag(sync=True)
+    vertical = traitlets.Bool(False).tag(sync=True)
+
+    @traitlets.validate('nsteps')
+    def _validate_nsteps(self, proposal):
+        if proposal['value'] <= 1:
+            raise traitlets.TraitError("nsteps must be strictly greater than 1.")
+        return proposal['value']
+
+    @traitlets.validate('value')
+    def _validate_value(self, proposal):
+        if proposal['value'] < 1:
+            raise traitlets.TraitError("value must be strictly in domain [1, nsteps].")
+        return proposal['value']
