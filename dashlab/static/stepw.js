@@ -34,6 +34,13 @@ export default {
     const trackDiv = el.querySelector(':scope .steps-track');
     const badgeVal = el.querySelector(':scope .widget-readout');
 
+    function applyTrackMaxHeight() {
+        const rawHeight = Number(model.get("height"));
+        if (!Number.isFinite(rawHeight)) return;
+        const trackMax = Math.max(0, rawHeight - 36);
+        el.style.setProperty("--step-track-max", `${trackMax}px`);
+    }
+
     let dotsHtml = "";
     for (let i = 1; i <= n_steps; i++) {
         dotsHtml += `<div class="step-dot-item" data-dot="${i}"></div>`;
@@ -146,11 +153,14 @@ export default {
         dotItems = trackDiv.querySelectorAll('.step-dot-item');
         updateView(model.get("value"));
     };
+    const handleHeightChange = () => applyTrackMaxHeight();
 
     model.on("change:value", handleValChange);
     model.on("change:playing", handlePlayingChange);
     model.on("change:nsteps", handleNStepsChange);
+    model.on("change:height", handleHeightChange);
 
+    applyTrackMaxHeight();
     updateView(model.get("value"));
 
     return () => {
@@ -164,6 +174,7 @@ export default {
         model.off("change:value", handleValChange);
         model.off("change:playing", handlePlayingChange);
         model.off("change:nsteps", handleNStepsChange);
+        model.off("change:height", handleHeightChange);
     };
     }
 };

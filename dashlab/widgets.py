@@ -610,6 +610,7 @@ class StepSlider(AnyWidget, ValueWidget):
     """A step slider widget that allows you to select a value from a range of discrete steps.
     value is an integer in the range [1, nsteps]. You can set the number of steps, the interval 
     for automatic playback (when you click on the label), and whether the slider is vertical or horizontal.
+    height trait is only used when vertical is True, and it controls the total height of the slider.
     """
     _esm = Path(__file__).with_name('static') / 'stepw.js'
     _css = Path(__file__).with_name('static') / 'stepw.css'
@@ -620,6 +621,7 @@ class StepSlider(AnyWidget, ValueWidget):
     playing = traitlets.Bool(False).tag(sync=True)
     interval = traitlets.Int(1500).tag(sync=True)
     vertical = traitlets.Bool(False).tag(sync=True)
+    height = traitlets.Int(276).tag(sync=True) # total slider height; track uses height - 36px
 
     @traitlets.validate('nsteps')
     def _validate_nsteps(self, proposal):

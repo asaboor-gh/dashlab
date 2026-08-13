@@ -2,7 +2,7 @@
     --accent-glow: rgba(59, 130, 246, 0.35);
     --dot-inactive: #8898;
     --step-dot-gap: 12px;
-    --step-track-max: 140px;
+    --step-track-max: 240px; /* will be changed by JS based on height prop */
     position: relative;
     width: 100%;
     background: transparent;
@@ -60,10 +60,8 @@
     touch-action: none;
 }
 .steps-widget.horizontal .step-dot-item {
-    width: 4px;
-    height: 4px;
-    aspect-ratio: 1 / 1;
-    border-radius: 50%;
+    width: 12px;
+    height: 24px;
     box-sizing: border-box;
     flex: 0 0 auto;
     position: relative;
@@ -71,27 +69,8 @@
     place-items: center;
     cursor: pointer;
     transform-origin: center;
-    background-color: var(--dot-inactive);
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.16s ease;
-}
-.steps-widget.horizontal .step-dot-item.active-dot {
-    width: 6px;
-    height: 6px;
-    margin-top: -1px;
-    flex-shrink: 0;
-    background-color: var(--accent-color, skyblue);
-    box-shadow: 0 0 6px var(--accent-glow);
-}
-
-.steps-widget.horizontal .step-dot-item.prev-dot,
-.steps-widget.horizontal .step-dot-item.next-dot {
-    width: 5px;
-    height: 5px;
-    aspect-ratio: 1 / 1;
-    border-radius: 50%;
-    flex-shrink: 0;
-    background-color: var(--accent-color, skyblue);
-    opacity: 0.75;
+    background-color: transparent;
+    transition: transform 0.16s ease;
 }
 
 .steps-widget:not(.horizontal) .slider-group {
@@ -101,7 +80,7 @@
 .steps-widget:not(.horizontal) .slider-container {
     width: 24px;
     height: fit-content;
-    max-height: 240px;
+    max-height: calc(var(--step-track-max) + 36px); /* extra space for readout and padding */
     flex-direction: column;
     align-items: center;
     flex-grow: 0;
@@ -124,10 +103,8 @@
     touch-action: none;
 }
 .steps-widget:not(.horizontal) .step-dot-item {
-    width: 4px;
-    height: 4px;
-    aspect-ratio: 1 / 1;
-    border-radius: 50%;
+    width: 24px;
+    height: 12px;
     box-sizing: border-box;
     flex: 0 0 auto;
     position: relative;
@@ -135,28 +112,8 @@
     place-items: center;
     cursor: pointer;
     transform-origin: center;
-    background-color: var(--dot-inactive);
-    opacity: 0.5;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.16s ease;
-}
-.steps-widget:not(.horizontal) .step-dot-item.active-dot {
-    width: 6px;
-    height: 6px;
-    margin-left: -1px;
-    flex-shrink:0;
-    background-color: var(--accent-color, skyblue);
-    box-shadow: 0 0 6px var(--accent-glow);
-}
-
-.steps-widget:not(.horizontal) .step-dot-item.prev-dot,
-.steps-widget:not(.horizontal) .step-dot-item.next-dot {
-    width: 5px;
-    height: 5px;
-    aspect-ratio: 1 / 1;
-    border-radius: 50%;
-    flex-shrink: 0;
-    background-color: var(--accent-color, skyblue);
-    opacity: 0.75;
+    background-color: transparent;
+    transition: transform 0.16s ease;
 }
 
 .steps-widget .step-dot-item.active-dot,
@@ -164,79 +121,93 @@
 .steps-widget .step-dot-item.next-dot,
 .steps-widget .step-dot-item:hover {
     flex-shrink: 0;
-    opacity: 1;
 }
 
 .steps-widget .step-dot-item:hover {
-    width: 12px;
-    height: 12px;
-    min-width: 12px;
-    min-height: 12px;
-    background-color: var(--accent-color, skyblue);
-    box-shadow: 0 0 6px var(--accent-glow);
-    opacity: 1;
     z-index: 3;
 }
 
 .steps-widget .step-dot-item::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    background-color: var(--dot-inactive);
+    box-shadow: none;
+    opacity: 1;
+    z-index: 1;
+    pointer-events: none;
+    transition:
+        width 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+        height 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+        background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+        box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+        opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.16s ease;
+}
+
+.steps-widget:not(.horizontal) .step-dot-item::after {
+    opacity: 0.5;
+}
+
+.steps-widget .step-dot-item.active-dot::after {
+    width: 6px;
+    height: 6px;
+    background-color: var(--accent-color, skyblue);
+    box-shadow: 0 0 6px var(--accent-glow);
+    opacity: 1;
+}
+
+.steps-widget .step-dot-item.prev-dot::after,
+.steps-widget .step-dot-item.next-dot::after {
+    width: 5px;
+    height: 5px;
+    background-color: var(--accent-color, skyblue);
+    opacity: 0.75;
+}
+
+.steps-widget .step-dot-item:hover::after {
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    min-height: 18px;
+    background-color: var(--accent-color, skyblue);
+    box-shadow: 0 0 6px var(--accent-glow);
+    opacity: 1;
+}
+
+.steps-widget .step-dot-item::before {
     content: attr(data-dot);
     position: absolute;
-    right: calc(100% + 6px);
+    left: 50%;
     top: 50%;
-    transform: translate(-4px, -50%);
+    width: 18px;
+    height: 18px;
+    transform: translate(-50%, -50%) scale(0.8);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 1px 5px;
-    border-radius: 999px;
+    padding: 0;
+    border-radius: 50%;
     white-space: nowrap;
-    font-size: 9px;
+    font-size: 10px;
     line-height: 1;
     font-weight: 700;
-    color: #e8f6ff;
-    background-color: rgba(8, 20, 32, 0.92);
-    border: 1px solid rgba(144, 205, 244, 0.4);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    color: #f8fbff;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.9), 0 0 1px rgba(0, 0, 0, 0.75);
     opacity: 0;
+    z-index: 2;
     pointer-events: none;
     transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
-.steps-widget .step-dot-item:hover::after {
+.steps-widget .step-dot-item:hover::before {
     opacity: 1;
-    transform: translate(0, -50%);
-}
-
-.steps-widget.horizontal .step-dot-item:first-child::after {
-    left: calc(100% + 6px);
-    right: auto;
-    transform: translate(4px, -50%);
-}
-
-.steps-widget.horizontal .step-dot-item:first-child:hover::after {
-    transform: translate(0, -50%);
-}
-
-.steps-widget:not(.horizontal) .step-dot-item::after {
-    left: 50%;
-    right: auto;
-    top: auto;
-    bottom: calc(100% + 6px);
-    transform: translate(-50%, 4px);
-}
-
-.steps-widget:not(.horizontal) .step-dot-item:hover::after {
-    transform: translate(-50%, 0);
-}
-
-.steps-widget:not(.horizontal) .step-dot-item:first-child::after {
-    top: calc(100% + 6px);
-    bottom: auto;
-    transform: translate(-50%, -4px);
-}
-
-.steps-widget:not(.horizontal) .step-dot-item:first-child:hover::after {
-    transform: translate(-50%, 0);
+    transform: translate(-50%, -50%) scale(1);
 }
 
 .steps-widget .widget-readout {
