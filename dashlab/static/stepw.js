@@ -109,9 +109,24 @@ export default {
         model.save_changes();
     }
 
+    function setStepFromDotTarget(target) {
+        const dotEl = target instanceof Element ? target.closest('.step-dot-item') : null;
+        if (!dotEl || !trackDiv.contains(dotEl)) return false;
+
+        const dotStep = Number(dotEl.dataset.dot);
+        if (!Number.isFinite(dotStep)) return false;
+
+        stopPlayback();
+        model.set("value", dotStep);
+        model.save_changes();
+        return true;
+    }
+
     const onPointerDown = (e) => {
         trackDiv.setPointerCapture(e.pointerId);
-        handlePointerMove(!isVert ? e.clientX : e.clientY);
+        if (!setStepFromDotTarget(e.target)) {
+            handlePointerMove(!isVert ? e.clientX : e.clientY);
+        }
     };
 
     const onPointerMove = (e) => {
