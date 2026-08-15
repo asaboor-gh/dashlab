@@ -1,8 +1,9 @@
-import time, os
+import time
 import traitlets
 import asyncio
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import Union
 
 from pathlib import Path
 from ipywidgets import ValueWidget, GridBox, Stack
@@ -11,7 +12,7 @@ from anywidget import AnyWidget
 from html import escape
 from . import utils
 
-__all__ = ['FullscreenButton', 'ListWidget', 'FileWatcher', 'AnimationSlider', 'JupyTimer']
+__all__ = ['FullscreenButton', 'ListWidget', 'FileWatcher', 'AnimationSlider', 'JupyTimer', 'StepSlider', 'TabsWidget']
 
 class FullscreenButton(AnyWidget):
     """A button widget that toggles fullscreen mode for its parent element.
@@ -634,3 +635,22 @@ class StepSlider(AnyWidget, ValueWidget):
         if proposal['value'] < 1:
             raise traitlets.TraitError("value must be strictly in domain [1, nsteps].")
         return proposal['value']
+    
+    def select(self, target: Union[str, int]) -> bool:
+        """Select a step based on the target. Useful to integrate with other controls like if 
+        this is done at end points and you want to select something else from another widget.
+        
+        The target step to select. Can be 'first', 'last', 'next', 'prev', or an integer in the range [1, nsteps].
+
+        Returns True if the step was successfully selected or target was 'first' or 'last', False otherwise.
+        """
+        if target == "first": v = 1
+        elif target == "last": v = self.nsteps
+        elif target == "next": v = self.value + 1 if self.value < self.nsteps else None
+        elif target == "prev": v = self.value - 1 if self.value > 1 else None
+        elif type(target) is int: v = target if 1 <= target <= self.nsteps else None
+        else: raise ValueError(f"Invalid target: {target!r} (must be 'first', 'last', 'next', 'prev', or an int)")
+        
+        if v is None: return False
+        self.value = v
+        return True

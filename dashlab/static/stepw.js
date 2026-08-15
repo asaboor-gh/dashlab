@@ -14,22 +14,6 @@ export default {
             </div>
         </div>
     `;
-    
-    // We need a hook for external code (such as ipyslides) to move the slider programmatically
-    el.moveToStep = (dir) => {
-        const nsteps = model.get("nsteps");
-        const current = model.get("value");
-        if (dir === "next" && current < nsteps) {
-            model.set("value", current + 1);
-            model.save_changes();
-            return true; // signal that we handled the move
-        } else if (dir === "prev" && current > 1) {
-            model.set("value", current - 1);
-            model.save_changes();
-            return true; // signal that we handled the move
-        }
-        return false; // signal that caller should handle it (e.g. by forwarding the event)
-    };
 
     const trackDiv = el.querySelector(':scope .steps-track');
     const badgeVal = el.querySelector(':scope .widget-readout');
@@ -180,7 +164,6 @@ export default {
 
     return () => {
         stopPlayback();
-        delete el.moveToStep;
         trackDiv.removeEventListener('pointerdown', onPointerDown);
         trackDiv.removeEventListener('pointermove', onPointerMove);
         if (badgeVal) {
