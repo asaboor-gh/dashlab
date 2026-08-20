@@ -17,6 +17,7 @@ export default {
 
     const trackDiv = el.querySelector(':scope .steps-track');
     const badgeVal = el.querySelector(':scope .widget-readout');
+    let priorFocusedEl = null;
 
     function applyTrackMaxHeight() {
         const rawHeight = Number(model.get("height"));
@@ -133,6 +134,20 @@ export default {
         }
     };
 
+    const onWidgetMouseEnter = () => {
+        const active = document.activeElement;
+        priorFocusedEl = active instanceof HTMLElement ? active : null;
+    };
+
+    const onWidgetMouseLeave = () => {
+        if (!priorFocusedEl || !priorFocusedEl.isConnected) return;
+        if (el.contains(priorFocusedEl)) return;
+        priorFocusedEl.focus({ preventScroll: true });
+    };
+
+    el.addEventListener('mouseenter', onWidgetMouseEnter);
+    el.addEventListener('mouseleave', onWidgetMouseLeave);
+
     if (badgeVal) {
         badgeVal.addEventListener('click', onReadoutActivate);
     }
@@ -164,6 +179,8 @@ export default {
 
     return () => {
         stopPlayback();
+        el.removeEventListener('mouseenter', onWidgetMouseEnter);
+        el.removeEventListener('mouseleave', onWidgetMouseLeave);
         trackDiv.removeEventListener('pointerdown', onPointerDown);
         trackDiv.removeEventListener('pointermove', onPointerMove);
         if (badgeVal) {
