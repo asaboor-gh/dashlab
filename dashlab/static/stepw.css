@@ -227,6 +227,11 @@
     transition: background-position 0.25s ease, box-shadow 0.25s ease;
 }
 
+.steps-widget .widget-readout:hover {
+    border-radius: 4px;
+    background: var(--bg2-color, #9898);
+}
+
 .steps-widget.is-playing .widget-readout {
     background-image: repeating-linear-gradient(
         135deg,

@@ -257,6 +257,7 @@ _general_css = {
         '^:fullscreen > *, > *': {'margin' : 0}, # this is import for fullscreen mode to be margin-less directly
         '.jp-RenderedHTML': {'padding-right':0}, # feels bad
     },
+    '> .center': {'display': 'grid',},# important to declare center as grid
     # below widget-html-content creates issue even in nested divs
     '> *, > .center > *, .widget-html-content' : { # .center is GridBox
         'min-width': '0', # Preventing a Grid Blowout by css-tricks.com

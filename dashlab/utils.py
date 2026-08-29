@@ -1,4 +1,4 @@
-import inspect, re, sys, textwrap
+import html, inspect, re, sys, textwrap
 import ipywidgets as ipw
 
 from contextlib import contextmanager
@@ -19,6 +19,24 @@ def _fix_trait_sig(cls):
     cls.__signature__ = inspect.Signature(params)
     return cls
 
+def _css_value(value):
+    "Normalize CSS values so multiline strings remain a single valid declaration value."
+    if isinstance(value, str):
+        return re.sub(r'\s*\n+\s*', ' ', value.strip())
+    return value
+
+def _selector_parts(selector):
+    "Validate and normalize selector as a tuple of strings."
+    if not isinstance(selector, (tuple, list)):
+        raise TypeError(f"selector must be tuple/list of strings, got {type(selector).__name__}")
+    for part in selector:
+        if not isinstance(part, str):
+            raise TypeError(f"selector entries must be strings, got {type(part).__name__}")
+    selector = tuple(selector)
+    if any(part.lstrip().startswith('@') for part in selector) and len(selector) != 1:
+        raise ValueError("at-rule selector must be a single string in tuple/list")
+    return selector
+
 def _inline_style(kws_or_widget):
     "CSS inline style from keyword arguments having _ inplace of -. Handles widgets layout keys automatically."
     if isinstance(kws_or_widget, ipw.DOMWidget):
@@ -27,8 +45,9 @@ def _inline_style(kws_or_widget):
         kws = kws_or_widget
     else:
         raise TypeError("expects dict or ipywidgets.Layout!")
-    out = ''.join(f"{k.replace('_','-')}:{v};" for k,v in kws.items())
-    return f'style="{out}"' if kws else ''
+    declarations = [f"{k.replace('_','-')}:{_css_value(v)};" for k, v in kws.items()]
+    out = html.escape(''.join(declarations), quote=True)
+    return f'style="{out}"' if declarations else ''
 
 def _fix_init_sig(cls):
     # widgets ruin signature of subclass, let's fix it
@@ -122,6 +141,10 @@ def _build_css(selector, props):
 
     Read about specificity of CSS selectors [here](https://developer.mozilla.org/en-US/docs/Web/CSS/Specificity).
     """
+    selector = _selector_parts(selector)
+    if selector and selector[0].lstrip().startswith('@'):
+        # Reuse existing at-rule handling paths (@media/@keyframes/@page/etc.).
+        return _build_css((), {selector[0].strip(): props})
     # selector is tuple of string(s), props contains nested dictionaries of selectors, attributes etc."
     content = '\n' # Start with new line so style tag is above it
     children = []
@@ -146,7 +169,7 @@ def _build_css(selector, props):
             attributes.append( (key, value) )
     if attributes:
         content += re.sub(r'\s+\^','', (' '.join(selector) + " {\n").lstrip()) # Join nested tags to parent if it starts with ^
-        content += '\n'.join(f"\t{key.replace('_','-')} : {value};"  for key, value in attributes)  # _ allows to write dict(key=value) in python, but not in CSS props
+        content += '\n'.join(f"\t{key.replace('_','-')} : {_css_value(value)};"  for key, value in attributes)  # _ allows to write dict(key=value) in python, but not in CSS props
         content += "\n}\n"
 
     for key, value in children:
