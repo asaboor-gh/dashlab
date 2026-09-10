@@ -362,20 +362,23 @@ class FileWatcher(AnyWidget, ValueWidget):
         targets = {self.__path} | {Path(p).absolute() for p in self.assets}
         current_state = None
 
-        # Track the modification across the entire target pool
+        # Track the modification across the entire target pool, keeping max mtime
         for target_path in targets:
             if target_path.exists():
                 try:
-                    current_state = WatcherState.from_paths(self.__path, target_path)
+                    state = WatcherState.from_paths(self.__path, target_path)
                 except OSError:
-                    pass
+                    continue
+                if current_state is None or state.mtime > current_state.mtime:
+                    current_state = state
 
         if current_state is not None and current_state != self._last_state:
             self._last_state = current_state
             self._ping = {
                 "path": self.__path.name, # short name
                 "exists": True,
-                "mtime": time.strftime('%H:%M:%S', time.localtime(current_state.mtime)) if current_state else '—'
+                "mtime": time.strftime('%H:%M:%S', time.localtime(current_state.mtime)),
+                "nonce": time.monotonic() # force change event even for same-second edits
             }
 
     def _on_context_ready(self, change):
