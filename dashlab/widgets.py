@@ -150,6 +150,7 @@ class TabsWidget(GridBox):
         self._init_titles = titles or [] # store initial titles as list even if no children yet
         super().__init__(**kwargs)
         self.add_class('tabs-widget') # for custom styling
+        if vertical: self._lw.add_class('vertical') # must set initially too take proper effect
         self.titles = self._reset_titles(titles)
         traitlets.link((self,'titles'),(self._lw,'options'))
         
@@ -172,6 +173,7 @@ class TabsWidget(GridBox):
         self.layout.grid_template_columns = f'{self.tabs_width} 1fr' if self.vertical else '1fr'
         self.layout.grid_template_rows = '1fr' if self.vertical else f'{self.tabs_height} 1fr'
         self._lw.layout.height = self.tabs_height if not self.vertical else 'auto'
+        self._lw.add_class('vertical') if self.vertical else self._lw.remove_class('vertical') # for styling
     
     @traitlets.validate('children')
     def _validate_children(self, proposal):

@@ -63,15 +63,15 @@ Get-ChildItem -Recurse -Directory -Filter "*.egg-info" | ForEach-Object {
 
 # Build package
 if (-not $DryRun) { 
-    python -m build --wheel --sdist --verbose 
+    uv build --wheel --sdist --verbose
 } else { 
-    Write-Host "Would run python -m build --wheel --sdist --verbose" 
+    Write-Host "Would run uv build --wheel --sdist --verbose" 
 }
 
 # Upload to PyPI
 $uploadSucceeded = $false
 if (-not $DryRun) {
-    twine upload dist/*
+    uv publish
     if ($LASTEXITCODE -eq 0) { 
         $uploadSucceeded = $true 
     }
@@ -79,7 +79,7 @@ if (-not $DryRun) {
         Write-Host "`n❌ PyPI upload failed with exit code $LASTEXITCODE"
         exit 1
     }
-} else { Write-Host "Would upload with twine"; $uploadSucceeded = $true }
+} else { Write-Host "Would upload with uv publish"; $uploadSucceeded = $true }
 
 # Git commit & optional tag only if upload succeeded
 if ($uploadSucceeded) {

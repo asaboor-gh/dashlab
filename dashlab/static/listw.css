@@ -21,7 +21,6 @@
 
 .list-widget:hover .list-item {
     box-shadow: 0 0 1px #8884;
-    margin: 0.5px; /* feels like buttons */
     border-radius: 4px;
 }
 
@@ -45,7 +44,6 @@
 .list-widget.tabs .list-item.selected {
     border-bottom: 1px inset var(--accent-color, #8884);
     border-left: none;
-    font-weight: bold;
 }
 
 .list-widget.has-description {
@@ -89,13 +87,13 @@
 
 .list-item:hover {
     border: 1px solid #8884;
-    font-weight: bold;
-    transition: all 0.2s ease;
+    background-color: #8882; /* slight highlight on hover */
+    transition: background-color 0.2s ease-in;
 }
 
 .list-item.selected {
     box-shadow: 0 0 1px inset #8884;
-    font-weight: bold;
+    color: var(--accent-color, currentColor);
     border-radius: 4px;
     border-left: 1px solid var(--accent-color, #8884);
 }
@@ -106,17 +104,14 @@
 
 /* Since TabsWidget does not inherit from AnyWidget, but has ListWidget there, we can use it for CSS */
 
-.tabs-widget .list-widget.tabs {
+.tabs-widget .list-widget.tabs:not(.vertical) {
     border-radius: 4px 4px 0 0;
     border-bottom: 1px inset #8884;
     padding-left: 0;
 }
 
-.tabs-widget .list-widget.tabs .list-item:hover {
-    border-radius: 4px 4px 0 0;
-}
-
-.tabs-widget .list-item.selected {
+.tabs-widget .list-widget.tabs:not(.vertical) .list-item:hover,
+.tabs-widget .list-widget.tabs:not(.vertical) .list-item.selected {
     border-radius: 4px 4px 0 0;
 }
 
