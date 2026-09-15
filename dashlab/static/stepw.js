@@ -107,8 +107,27 @@ export default {
         return true;
     }
 
+    function moveStep(dir) {
+        if (dir !== 'next' && dir !== 'prev') return false;
+        const current = Number(model.get("value")) || 1;
+        const next = Math.max(1, Math.min(n_steps, current + (dir === 'next' ? 1 : -1)));
+        if (next === current) return false;
+
+        stopPlayback();
+        model.set("value", next);
+        model.save_changes();
+        return true;
+    }
+
     const onPointerDown = (e) => {
-        trackDiv.setPointerCapture(e.pointerId);
+        // Guard against synthetic or stale pointer IDs.
+        if (typeof e.pointerId === 'number') {
+            try {
+                trackDiv.setPointerCapture(e.pointerId);
+            } catch (_err) {
+                // ignore invalid pointer capture requests
+            }
+        }
         if (!setStepFromDotTarget(e.target)) {
             handlePointerMove(!isVert ? e.clientX : e.clientY);
         }
@@ -122,6 +141,9 @@ export default {
 
     trackDiv.addEventListener('pointerdown', onPointerDown);
     trackDiv.addEventListener('pointermove', onPointerMove);
+
+    // Expose explicit API for host widgets (for example, ipyslides keyboard/swipe).
+    el._trySetStep = moveStep;
 
     const onReadoutActivate = () => {
         if (model.get("playing")) {
@@ -183,6 +205,7 @@ export default {
         el.removeEventListener('mouseleave', onWidgetMouseLeave);
         trackDiv.removeEventListener('pointerdown', onPointerDown);
         trackDiv.removeEventListener('pointermove', onPointerMove);
+        delete el._trySetStep;
         if (badgeVal) {
         badgeVal.removeEventListener('click', onReadoutActivate);
         }
