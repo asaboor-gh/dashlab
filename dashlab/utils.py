@@ -136,7 +136,7 @@ def _build_css(selector, props):
     - All nested selectors are joined with space, so `'.A': {'.B': ... }` becomes `.A .B {...}` in CSS.
     - A '^' in start of a selector joins to parent selector without space, so `'.A': {'^:hover': ...}` becomes `.A:hover {...}` in CSS. You can also use `'.A:hover'` directly but it will restrict other nested keys to hover only.
     - A list/tuple of values for a key in dict generates CSS fallback, so `'.A': {'font-size': ('20px','2em')}` becomes `.A {font-size: 20px; font-size: 2em;}` in CSS.
-    - An empty key with a string/path value injects raw CSS wrapped in nested code['css']`&`, so `'.A': {'': 'raw css here'}` becomes `& { .A { raw css here } }` in CSS. 
+    - An empty key with a string/path value injects raw CSS wrapped in nested `&`, so `'.A': {'': 'raw css here'}` becomes `& { .A { raw css here } }` in CSS. 
       This, however, can NOT be used to inject complex CSS like `@import`, `@layer` etc.  `:root` is replaced with `&` to make variables local to the selector at given nesting level.
 
     Read about specificity of CSS selectors [here](https://developer.mozilla.org/en-US/docs/Web/CSS/Specificity).
