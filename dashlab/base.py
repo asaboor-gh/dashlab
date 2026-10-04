@@ -185,7 +185,7 @@ _docs = {
     - Dynamic widget property updates
     - Built-in fullscreen support
     """,
-    "css_info": re.sub(r'\bcode(\[.*?\])?\`', '`', _build_css.__doc__, flags=re.DOTALL), # inline code` or code['css']` not supported is dashlab itself
+    "css_info": _build_css.__doc__,
     "gather": """        
         - Name of widgets from params or output widgets from callbacks by their CSS class names (e.g. 'out-stats').
         - Special group names: `*all`, `*out`, `*ctrl`, `*repr` for all widgets, outputs, controls, representation widgets respectively.
